@@ -68,7 +68,7 @@ model packs them as an **overcomplete, almost-orthogonal frame**. Two facts of d
   forced the moment #features $> d$. (The familiar form "$W^{*}W$ singular" says the same through
   the adjoint.)
 - *The cost is metric-dependent.* What superposition *pays* is **interference**: the
-  off-diagonal of the Gram operator $G = D^{*}D$ (built from the adjoint, hence metric-laden).
+  off-diagonal of the Gram matrix $G = D^{*}D$ (built from the adjoint, hence metric-laden).
   That this stays small — the frame is
   *almost*-orthogonal — is a claim about an inner product, underwritten by *Johnson–Lindenstrauss*
   (exponentially many near-orthogonal unit vectors exist in $\mathbb{R}^d$) and *compressed
@@ -126,7 +126,7 @@ $\gg 3$) and fingers the *Adam* optimiser's per-coordinate normalisation as the 
 | # | Approach (camp) | Core question | Papers | Signature mathematics |
 |---|---|---|---|---|
 | 1 | **Algebraic circuit analysis** | Rewrite the forward pass into readable terms | [framework](../papers/framework.md), [induction-heads](../papers/induction-heads.md), [interpretability-in-the-wild-ioi](../papers/interpretability-in-the-wild-ioi.md) | tensor/Kronecker products, low-rank $W_{QK},W_{OV}$, path expansion, OV eigenvalues, causal patching |
-| 2 | **Superposition geometry** | How do $\gg d$ features pack into $d$ dims? | [toy-models-superposition](../papers/toy-models-superposition.md), [superposition-memorization-double-descent](../papers/superposition-memorization-double-descent.md), [distributed-representations-composition-superposition](../papers/distributed-representations-composition-superposition.md), [privileged-bases-residual-stream](../papers/privileged-bases-residual-stream.md), [toy-model-of-interference-weights](../papers/toy-model-of-interference-weights.md) | Thomson problem, uniform polytopes / tegum products, JL, compressed sensing, Gram operator $D^{*}D$, phase transitions, kurtosis test |
+| 2 | **Superposition geometry** | How do $\gg d$ features pack into $d$ dims? | [toy-models-superposition](../papers/toy-models-superposition.md), [superposition-memorization-double-descent](../papers/superposition-memorization-double-descent.md), [distributed-representations-composition-superposition](../papers/distributed-representations-composition-superposition.md), [privileged-bases-residual-stream](../papers/privileged-bases-residual-stream.md), [toy-model-of-interference-weights](../papers/toy-model-of-interference-weights.md) | Thomson problem, uniform polytopes / tegum products, JL, compressed sensing, Gram matrix $D^{*}D$, phase transitions, kurtosis test |
 | 3 | **Dictionary learning (SAEs)** | *Recover* the feature frame from activations | [towards-monosemanticity](../papers/towards-monosemanticity.md), [scaling-monosemanticity](../papers/scaling-monosemanticity.md), [softmax-linear-units](../papers/softmax-linear-units.md), [sparse-crosscoders-model-diffing](../papers/sparse-crosscoders-model-diffing.md) | overcomplete dictionary learning, $\ell_1$/$\ell_0$ sparse coding, encoder/decoder frames, scaling laws |
 | 4 | **Circuit tracing / attribution** | Read off causal computation graphs on a real model | [circuit-tracing-computational-graphs](../papers/circuit-tracing-computational-graphs.md), [on-the-biology-of-a-large-language-model](../papers/on-the-biology-of-a-large-language-model.md), [tracing-attention-feature-interactions](../papers/tracing-attention-feature-interactions.md), [progress-on-attention](../papers/progress-on-attention.md) | local linearization (Jacobian/Taylor), stop-gradients, Neumann series $(I-A)^{-1}$, transcoders, interference-corrected virtual weights |
 | 5 | **Representation geometry** | Take the *geometry* (metric, curvature, group structure) seriously | [linear-representation-hypothesis-geometry](../papers/linear-representation-hypothesis-geometry.md), [when-models-manipulate-manifolds-counting](../papers/when-models-manipulate-manifolds-counting.md), [progress-measures-for-grokking](../papers/progress-measures-for-grokking.md) | non-Euclidean inner products, Riesz duality, differential geometry of curves, Fourier analysis / characters of $\mathbb{Z}/n\mathbb{Z}$ |
@@ -267,7 +267,7 @@ because the two behave oppositely under the $GL(V)$ gauge of I.4.
   product* — equivalently they apply the **adjoint** ($W^{*}$, not the dual $W^{\vee}$; see
   [MLConcepts.md](MLConcepts.md)'s convention), silently inserting $G=I$ as a metric the
   architecture never supplied:
-  - **interference / coherence** — the off-diagonal of the feature Gram operator $G=D^{*}D$
+  - **interference / coherence** — the off-diagonal of the feature Gram matrix $G=D^{*}D$
     (Group 2); capacity, adversarial vulnerability, and the Thomson geometry are read off $G$;
   - **SAE reconstruction** $\|x-\hat x\|_2^2$ and the near-orthogonality $G\approx I$ that makes
     recovery work (Group 3); *feature splitting* is $G$ revealing finer block structure;
@@ -294,8 +294,9 @@ $$ \gamma(y)\ \mapsto\ A\,\gamma(y)+\beta, \qquad \lambda(x)\ \mapsto\ (A^{\vee}
 (in coordinates $(A^{\vee})^{-1}=A^{-\top}$). This is the **readout instance of the I.4 gauge**
 ($A$ acting on the final-layer spaces): the unembedding side transforms by $A$, the embedding side
 by the inverse **dual map** $(A^{\vee})^{-1}$ — *contragrediently* — so the pairing
-$\langle\lambda,\gamma\rangle$ is invariant. That $\lambda$ transforms as a covector is just the
-statement $\Lambda\cong\bar\Gamma^{*}$. The general principle, across every activation space:
+$\langle\lambda,\gamma\rangle$ is invariant (the additive $\beta$ merely shifts every logit by the
+same $y$-independent amount, which softmax discards — §1.2). That $\lambda$ transforms as a
+covector is just the statement $\Lambda\cong\bar\Gamma^{*}$. The general principle, across every activation space:
 
 > **Gauge-invariant means built only from the model's own maps and the natural dual pairing.**
 > Quantities assembled from learned weights and the contraction of a space with its dual — the
@@ -387,7 +388,7 @@ in what "correct" even means, and it cuts the toolkit in half.
 
 ### IV.3 Exact algebra vs. local linearization vs. learned approximation
 
-Three incompatible notions of "linear" coexist (see [MLConcepts.md](MLConcepts.md) §3 and):
+Three incompatible notions of "linear" coexist (see [MLConcepts.md](MLConcepts.md) §1.4 and §3):
 1. **Exact, by freezing the nonlinearity** ([framework](../papers/framework.md)): attention
    frozen ⇒ the forward pass is *honestly* linear in tokens. No approximation.
 2. **Local linearization** ([circuit-tracing](../papers/circuit-tracing-computational-graphs.md),
