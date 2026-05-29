@@ -1,0 +1,195 @@
+# A Toy Model of Mechanistic (Un)Faithfulness
+
+> Source: https://transformer-circuits.pub/2025/faithfulness-toy-model/index.html
+> literature/README.md line 1
+> Format: markdown (converted from HTML); images in `images/toy-model-of-mechanistic-unfaithfulness/`
+
+---
+
+Mechanistic faithfulness is the concern that when we replace model components with sparse approximations (such as transcoders), those replacements might implement different mechanisms than the original model. Every computer science student knows that there are many different algorithms which can achieve the same effect – sorting algorithms are a classic example of this! Why should we believe our transcoders learn the same mechanisms as the original underlying model?
+
+The goal of this update is to describe mechanistic faithfulness, and to concretely illustrate it in a toy model. Although we've discussed [this briefly](https://transformer-circuits.pub/2025/attribution-graphs/methods.html#limitations-faithfulness) in recent papers, we felt it deserved more depth. We'll also briefly explore the idea that "Jacobian matching" might help with this. Finally, we'll conclude with a discussion of how mechanistic faithfulness relates to the broader universe of concerns around SAEs and transcoders.
+
+This note is very preliminary. We're sharing because it might be of interest to researchers working actively in this space, and we believe there's value in sharing thoughts earlier. We'd ask you to treat these results like those of a colleague sharing some thoughts or preliminary experiments for a few minutes at a lab meeting, rather than a mature paper. It is not intended for a broad audience. All claims should be taken with significant caveats and low confidence throughout.
+
+### [Background: Sleepwalking into Mechanistic Faithfulness](#background)
+
+In 2024, a number of researchers introduced what we now call transcoders : SAEs that read in a layer's input and predict its output. These transcoders greatly simplified circuit analysis – it was now possible to think about features as having linear interactions with each other, rather than having to make unprincipled approximations through non-linearities or end up in "attribution hell".
+
+At the time, I think we underappreciated what a radical change this was.  Certainly, I underappreciated this. We were switching from using SAEs to model representation to modeling computation.
+
+When one models representation, much can be forgiven. Features are just a basis for the vector space of activations, and the primary concern is whether they make the activations understandable.  As long as your features are monosemantic and explain the activations, it's a valid way to understand what the activations contain. Of course, it might prove hard to understand the model's computation in that basis, but you won't be misled.
+
+However, when one models computation, it becomes possible to have a setup that is monosemantic, and has low MSE on distribution, but achieves this through a different computational mechanism. This is particularly concerning since the alternate mechanisms may generalize differently off distribution. This attacks one of the deepest hopes for mech interp: explanations we can really deeply trust.
+
+This lack of mechanistic faithfulness is somewhat bounded by the fact that the mechanism can only diverge so far, since we're only replacing the model "one step at a time" – that is, every transcoder step predicts the ground-truth residual stream, after a single transcoder non-linearity, greatly limiting the space of mechanistic divergences. (If you force sorting algorithms to match their memory state after every computational step, that likely forces them to be the same!)
+
+But for transcoders, we can clearly construct examples where they can and do mechanistically diverge despite this.
+
+### [The Absolute Value Transcoder Problem and Repeated Data](#problem)
+
+Our goal is to construct a toy model illustrating mechanistic (un)faithfulness. This means we need to have a toy model which studies computation, rather than representation, such that the computation can potentially be unfaithful!
+
+One such toy problem is the absolute value problem. We can have a one layer model try to map x \to y = \text{abs}(x). This can be done easily with two ReLU neurons like so:
+
+y\_i = \text{ReLU}(x\_i) + \text{ReLU}(-x\_i)
+
+This is exactly identical to \text{abs}(x), and in fact, we can see \text{abs}(x) as a convenient way of writing down this exact ReLU network.
+
+One question we could ask is "if we don't give a model enough neurons to implement this solution, how does it do computation in superposition"? We're going to leave that question to another day, and instead ask "under what circumstances can a transcoder recover these features, given a perfect model (i.e. y = \text{abs}(x) or equivalently y\_i = \text{ReLU}(x\_i) + \text{ReLU}(-x\_i)) .
+
+It turns out that our transcoders easily discover this solution by default.
+
+(One important detail is that we're going to use tanh L1 regularization, in order to achieve closer results to L0 regularization. If we use standard L1 regularization, our transcoders essentially learn duplicate features with extra capacity, and are generally messier.)
+
+#### Adding a Repeated Data Point
+
+In the basic problem setup, we'll use the following data distribution:
+
+x\_i = \text{Uniform}(-1,1)~~~~
+
+\text{if} ~ \text{Uniform}(0,1) ~<~ \text{density}
+
+x\_i = 0
+
+\text{otherwise}
+
+We're now going to add a special "memorization data point" to the mix. We'll define a special data point p which is 1 on the first 3 dimensions and 0 on the others:
+
+p ~=~ [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, \ldots]
+
+And then have x be p some fraction `repeat_frac` of the time.
+
+#### Datapoint Features Emerge
+
+If we repeat a data point like this, we begin to see a transcoder "memorization feature" circuit :
+
+y ~+=~ p \cdot \text{ReLU}(\lambda p \cdot x - b)
+
+Notice how this feature specifically activates on p and then produces p!
+
+We'll call this a "[datapoint feature](https://transformer-circuits.pub/2023/toy-double-descent/index.html)".
+
+Datapoint features like this are fine if they reflect the underlying model. Models very likely do memorize some datapoints, in which case we want features like this. But in this case, the model x \to \text{abs}(x) has no special notion of p. This means that these features are not mechanistically faithful! The transcoder is memorizing something which the underlying model didn't.
+
+We now have an example of mechanistic unfaithfulness to explore. In the following sections, we'll investigate when these datapoint features form, and how we can get rid of them, with the goal of more generally resolving mechanistic faithfulness.
+
+#### [When Do Datapoint Features Form?](#problem-when)
+
+Before we run more experiments, it is useful to understand exactly when we should expect these datapoint features to form in a transcoder, so that we can calibrate our experiments. When they form from the transcoder memorizing a datapoint (rather than the underlying model doing so and the transcoder faithfully mimicking it) there are two necessary conditions:
+
+1. There must be a repeated datapoint in the transcoder training set. More repetition makes datapoint features more likely.
+2. We must be regularizing for activations to be sparse. This makes memorizing the data point helpful, since it allows us to handle that particular input more sparsely.
+
+If we do a scan over these two hyperparameters and measure the presence of datapoint features, we see that in fact it's the product of these two properties that controls whether datapoint features form (our measure of memorization is defined in the next section):
+
+![](images/toy-model-of-mechanistic-unfaithfulness/fig-001.png)
+
+#### [Aside: How do we Detect a Datapoint Feature?](#problem-detect)
+
+For any feature f\_i we can measure its contribution to y. We'll denote this as:
+
+y|\_{f\_i}(x) = W\_\text{down}^i f\_i(x)
+
+We'll define the memorization of a feature f\_i on the datapoint p as the "excess" explanation of p above explaining individual three constituent dimensions we'd expect from the generalization solutions:
+
+m(f\_i, p) = \text{ReLU}(y|\_{f\_i}(p) \cdot \hat{p} - \text{max}\_{j<3} y|\_{f\_i}(p) \cdot e\_j
+
+where p is the repeated data point defined above and e\_j denotes the jth unit vector. Then we define the total memorization of a model as the sum of memorization over features. This is a crude way to define memorization, but a useful starting point.
+
+### [Investigating Datapoint Features](#investigating)
+
+In this section, we'll investigate our toy model in two regimes, one without repeated data points, and one with them. Our goal will be to mechanistically understand the resulting models, and directly observe the induction of data point features.
+
+To aid us in this, we'll introduce a new visualization which will allow us to see how each transcoder feature maps to the features we think it might be natural to learn (\text{ReLU}(x\_i), \text{ReLU}(-x\_i), and memorization). The mathematics of this is a little subtle, so we'll look at one example with this visualization before explaining it. This will make the mathematics more motivated and a little easier to follow.
+
+#### [No Repeat Baseline](#investigating-baseline)
+
+Below, you can see this visualization applied to a baseline setup, where we train a transcoder on the absolute value problem without any repetition.
+
+This visualization is explained in detail below, but note for now that it shows a map between transcoder neurons, and the features we might expect to learn. On the x-axis we have transcoder neurons, and on the y-axis potential features/circuits. Without repetition, we see that the transcoder learns almost exactly the expected features y\_i += \text{ReLU}(x\_i) or y\_i += \text{ReLU}(-x\_i), with a small residual. To make this even more concrete, the actual neuron weights are shown for selected neurons below.
+
+![](images/toy-model-of-mechanistic-unfaithfulness/fig-002.png)
+
+#### Aside: How does this visualization work?
+
+The key idea is that we have a "library" of ideal circuits we think the transcoder might learn (the regular ReLU ones and memorization). We consider the "contribution" y|\_{f\_i} each ideal circuit would produce (as defined above). We consider a vector of such contributions over a large sample of data points. This produces a very high-dimensional vector. We can construct a similar vector for each of our learned transcoder features; these vectors are constructed over the same data points so that the vectors are comparable. We then do compressed sensing to try to explain the observed contributions of each transcoder feature circuit in terms of the ideal circuits. At the end, we get a matrix of transcoder features by ideal features, and also a residual that can't be explained.
+
+#### [Light Repetition](#investigating-light-repeat)
+
+We can now ask what happens if we introduce a repeated data point! (We only use a relatively small amount of repeated data for this setup, 5%, such that memorization is marginal).
+
+![](images/toy-model-of-mechanistic-unfaithfulness/fig-003.png)
+
+We can now see a data point feature (see bottom right), as expected. We also have features corresponding to the three individual features which are used in the repeated data point, but they are rotated so that they don't activate on the repeated data point.
+
+This demonstrates that mechanistic faithfulness can be a real problem, even in very simple setups!
+
+### [Jacobian Regularization: A Potential Solution?](#jacobian-regularization)
+
+Mechanistic faithfulness is a serious problem, but we don't think the issue is hopeless. In this section, we propose a connection between mechanistic faithfulness and a layer's Jacobian, and then demonstrate that we can exploit this to solve mechanistic faithfulness, at least in some toy problems. (We don't claim this is the ideal solution, and indeed we'll note some issues with it. Our goal is simply to show that there are productive paths forward to explore.)
+
+The connection to Jacobian's may not be obvious at first. One way to see it is to consider how the features learned by transcoders in our previous two examples produce very different Jacobians on the memorized data point:
+
+![](images/toy-model-of-mechanistic-unfaithfulness/fig-004.png)
+
+In the baseline case, we see a diagonal matrix (telling us the features are independent). But in the repeated data case, with the datapoint feature, we see that the "reason" each feature is active locally is due to all the other features (which should be irrelevant!).
+
+There's a deeper technical reason this is principled. For a single layer, there's a very important way in which the Jacobian (as a function across data points) hits upon the nature of its mechanisms. Intuitively, if you want to understand the mechanisms, you should look at the weights – this is the motivation behind circuits work, and also behind recent "weight-based interpretability" (e.g. ). But the weights of neural networks aren't canonical – there's all kinds of ways you can transform them, such as permuting neurons, or inversely scaling the input and output weights. They also need context about how input statistics will cause non-linearities to behave. For a ReLU layer, we can understand its Jacobian as being a sum of outer products corresponding to its input and output weights. In some sense, this is a natural canonicalized form of the parameters, and also attaches (when considered as a function over data points) information about when neurons co-activated.
+
+#### [Jacobian Matching](#jacobian-regularization-matching)
+
+Given this observation, a natural response is what we'll call "Jacobian matching". We penalize the difference between our transcoder’s jacobian and the true jacobian:
+
+||J\_\text{MLP} - J\_\text{Transcoder}||\_F^2
+
+In practice, this objective would be extremely expensive. Instead, we exploit that this is equivalent in expectation to:
+
+{\Large E}\_v K||J\_\text{MLP}v - J\_\text{Transcoder}v||\_2^2
+
+where v is a random vector. This can be computed cheaply with backprop.
+
+It turns out that adding this to our loss dramatically helps our datapoint feature memorization metric.
+
+![](images/toy-model-of-mechanistic-unfaithfulness/fig-005.png)
+
+#### [Jacobian Matching Can Solve Mechanistic Faithfulness (In This Example)](#jacobian-regularization-example)
+
+Let's return to our repeated data point example, which produced a data point feature above. What happens if we regularize it to match the ground truth Jacobian? It turns out to basically fix the problem!
+
+![](images/toy-model-of-mechanistic-unfaithfulness/fig-006.png)
+
+We see that this gets rid of the memorization feature, but that our transcoder features for the features used on the repeated point are a bit rotated (see residual at bottom left).
+
+#### [Can the Transcoder Cheat?](#jacobian-regularization-cheat)
+
+In the adversarial attack robustness literature, there's a problem called "gradient masking", where models will learn to manipulate their gradients. The general trick we observe is that they can create features with large weights and thus large gradients, but very negative biases so that they're barely active and don't contribute much to the L1 objective.
+
+Note that this is exploiting a gap between our L1 objective, and the L0 objective we wish to optimize. Using tanh L1 helps significantly here, since it moves us closer to L0.
+
+In principle, it seems like there are other optimization terms we could add to push back on this if it was an issue. For example, it might be interesting to penalize the L1 of different transcoder features contributions to the Jacobian, to penalize attempts to manipulate the gradient like this. This can be cheaply approximated, since it's just the norms of the input and output weights multiplied together, masked by the Jacobian of the transcoder activation function.
+
+#### [Superposition and Jacobian Matching](#jacobian-regularization-superpostion)
+
+Surprisingly, we may not want to perfectly match the Jacobian. This is because we believe the models we study are in superposition, and we believe that doing superposition will "blur" the Jacobian.
+
+One way to think about this is to ask what we expect the spectrum of the Jacobian to look like. Very naively, we might expect something like this:
+
+![](images/toy-model-of-mechanistic-unfaithfulness/fig-007.png)
+
+The tail is an artifact of superposition, and we shouldn't care about modeling it. Concretely, it corresponds to features spread over multiple neurons, which also represent other features. If a single feature is active and it is spread over 10 neurons, we should expect one large singular value in the Jacobian corresponding to that feature, and 9 small singular values corresponding to other things those neurons help represent.
+
+This intuition makes us believe that, while we want to push towards better Jacobian matching, we shouldn't expect to match it perfectly.
+
+### [Conclusion](#conclusion)
+
+We've seen that mechanistic faithfulness can be a real concern!
+
+In our thinking, it's become more than this. In the ongoing discourse on SAEs/transcoders and their potential weaknesses, we've found it helpful to refactor concerns into two broad categories:
+
+1. Mechanistic Faithfulness - Is the transcoder capturing the true mechanisms? Failure here cuts at the heart of everything we hope for in mechanistic interpretability. On the other hand, as long as we can succeed at this category, at least transcoders can be used to reliably learn true things! In practice, this is probably a spectrum
+2. Simplicity. Are transcoders capturing mechanisms in the simplest/cleanest manner? One could imagine cases where the same mechanism can be explained in multiple different ways. For example, it's possible there exist feature manifolds / multidimensional features, but that they can be accurately approximated with a large number of discrete features. Failure here is more of a tax on how hard it will be to understand things.
+
+In practice, many concerns people raise speak to both of these categories to some extent.
+
+Both of these are major concerns, but we're presently most concerned with mechanistic faithfulness. Although success on it is probably more of a spectrum than binary, we see it as cutting at the very heart of why we care about mechanistic interpretability. Thankfully, it seems like there are promising paths forward.
