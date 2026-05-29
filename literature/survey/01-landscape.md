@@ -10,6 +10,11 @@
 > ML specialist. ML jargon is offloaded to [MLConcepts.md](MLConcepts.md); the first use of
 > a term defined there is *italicised*. Paper links point into `../papers/`. All 22 papers
 > were read in full for this survey.
+>
+> **Notation.** For a linear map $W:A\to B$ we distinguish (per [MLConcepts.md](MLConcepts.md)'s
+> convention) the **dual map** $W^{\vee}:B^{*}\to A^{*}$ — canonical, metric-free (the symbol is
+> non-standard; some write ${}^{t}W$ or $W'$) — from the **adjoint** $W^{*}:B\to A$, which exists
+> only once a metric is chosen. $W^{*}$ always signals an invoked metric; $W^{\vee}$ never does.
 
 ---
 

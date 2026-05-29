@@ -42,11 +42,15 @@ $$ \text{model}: \; (\text{sequence of tokens}) \longmapsto (\text{probability d
 
 > **Adjoints vs. duals (a notational convention).** For a linear map $W:A\to B$ we keep two
 > operations distinct, and never write a bare "$^\top$" for either:
-> - the **dual map** $W^{\vee}:B^{*}\to A^{*}$ — canonical, defined with *no* inner product;
-> - the **adjoint** $W^{*}:B\to A$ — defined only once $A,B$ carry inner products (the
->   real-scalar specialization of the Hermitian adjoint).
+> - the **dual map** (a.k.a. transpose map) $W^{\vee}:B^{*}\to A^{*}$, $W^{\vee}(\phi) = \phi\circ W$
+>   — canonical, defined with *no* inner product;
+> - the **adjoint** $W^{*}:B\to A$ — defined only once $A,B$ carry inner products, by
+>   $\langle Wa, b\rangle_B = \langle a, W^{*}b\rangle_A$ (the real-scalar specialization of the
+>   Hermitian adjoint).
 >
-> They coincide in coordinates with the standard inner product — which is exactly why a transpose
+> The notation $W^{\vee}$ for the dual is *not* universal — texts also write ${}^{t}W$, $W'$, or
+> even $W^{*}$; we use $W^{\vee}$ precisely so that $W^{*}$ can be reserved for the adjoint. The
+> two coincide in coordinates with the standard inner product — which is exactly why a transpose
 > in the source papers is ambiguous. We resolve each occurrence: **$W^{*}$ always signals that a
 > metric has been invoked; $W^{\vee}$ never does.** (A genuine matrix-bookkeeping transpose, when
 > one slips in, is flagged as neither.)
