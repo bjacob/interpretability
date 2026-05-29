@@ -52,8 +52,15 @@ $$ \text{model}: \; (\text{sequence of tokens}) \longmapsto (\text{probability d
 > even $W^{*}$; we use $W^{\vee}$ precisely so that $W^{*}$ can be reserved for the adjoint. The
 > two coincide in coordinates with the standard inner product — which is exactly why a transpose
 > in the source papers is ambiguous. We resolve each occurrence: **$W^{*}$ always signals that a
-> metric has been invoked; $W^{\vee}$ never does.** (A genuine matrix-bookkeeping transpose, when
-> one slips in, is flagged as neither.)
+> metric has been invoked; $W^{\vee}$ never does.**
+>
+> Consequently a bare "$^{\top}$" survives in this document in **only one role**: the *literal
+> matrix transpose* inside an expression explicitly marked *"coordinates"* or *"matrix picture"* —
+> an optional, concrete realization of an object we have already named invariantly (e.g. the
+> coordinate form $W_Q^{\top}W_K$ of the bilinear form $W_{QK}$, or $X A^{\top}$ for
+> right-multiplying a position index). It never stands for a map between spaces. A quadratic form
+> $x^{\top}M y$ likewise becomes the canonical pairing $\langle Mx, y\rangle$ with the metric
+> $M:V\to V^{*}$ written as a map.
 
 ### 1.1 Tokens, vocabulary, embedding, unembedding
 - **Token**: the atomic input symbol. Text is chopped by a *tokenizer* into a sequence of tokens (roughly sub-words). The **vocabulary** $\mathcal V$ is the set of possible tokens, $|\mathcal V| = n_{\text{vocab}}$ (e.g. $\sim 50{,}000$); a token is a basis vector of **token space** $T = \mathbb{R}^{\mathcal V}$ (a *one-hot* — see box).
@@ -312,7 +319,7 @@ presence of a transpose in $W_{QK}$ and its absence in $W_{OV}$ is exactly that 
 
 #### Freezing the attention pattern — the move that makes circuits tractable
 
-This unpacks the paragraph you asked about. The head map $X \mapsto W_{OV}\,X\,A(X)^\top$ is
+This unpacks the paragraph you asked about. The head map (matrix picture) $X \mapsto W_{OV}\,X\,A(X)^\top$ is
 nonlinear, but in a very controlled way: **the only nonlinear dependence on $X$ is through
 $A = A(X)$.** Hold $A$ fixed at a constant matrix $A_0$ and the residual map
 $$ X \;\longmapsto\; (W_{OV}\otimes A_0)\,X \qquad(\text{matrix picture: } W_{OV}\, X\, A_0^\top) $$

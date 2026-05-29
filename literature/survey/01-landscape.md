@@ -84,12 +84,12 @@ purely **linear communication channel** (blocks add their outputs), so the forwa
 be **path-expanded** into a sum of end-to-end linear paths, with the *softmax* attention
 pattern $A$ as the only nonlinearity. **Freeze $A$** and the model is an exact linear function
 of the input tokens. Two low-rank objects fall out of every attention head:
-$$ W_{QK} = W_Q^{\top} W_K : V\to V^{*} \;\;(\text{a bilinear form — } \textit{where}\text{ to attend}), \qquad
+$$ W_{QK} : V\to V^{*} \;\;(\text{a bilinear form — } \textit{where}\text{ to attend; coordinates } W_Q^{\top}W_K), \qquad
    W_{OV} = W_O W_V : V\to V \;\;(\text{an endomorphism — } \textit{what}\text{ to write}).$$
-The type signature *is* the where/what split: the transpose in $W_{QK}$ marks that it lands in the
-**dual** $V^{*}$ (a pairing of two stream vectors into a score), while $W_{OV}$ needs none (a map
-of stream vectors to stream vectors); see [MLConcepts.md](MLConcepts.md) §1.4 and the adjoint/dual
-convention there. "*Virtual weights*" $W^{(2)}_{\text{in}} W^{(1)}_{\text{out}}$ connect any two blocks through the
+The type signature *is* the where/what split: that $W_{QK}$ lands in the **dual** $V^{*}$ (a
+pairing of two stream vectors into a score) is exactly why a transpose appears in its coordinate
+form $W_Q^{\top}W_K$, while $W_{OV}$ — a map of stream vectors to stream vectors — needs none; see
+[MLConcepts.md](MLConcepts.md) §1.4 and the adjoint/dual convention there. "*Virtual weights*" $W^{(2)}_{\text{in}} W^{(1)}_{\text{out}}$ connect any two blocks through the
 stream. This algebra — tensor/Kronecker products, low-rank factorisations, eigenanalysis of
 the OV "copying" matrix — is the literal skeleton of Groups 1 and 4 below, and reappears as
 the QK bilinear form in Group 5.
@@ -210,9 +210,10 @@ formalises "feature = direction" via counterfactual concept pairs, distinguishes
 **embedding** ($\Lambda$, input/context side) and **unembedding** ($\bar\Gamma$, output/word
 side) spaces — which are *canonically dual*, $\Lambda\cong\bar\Gamma^{*}$, the softmax pairing
 $\langle\lambda,\gamma\rangle$ needing no metric — and — crucially — observes that the Euclidean inner product is **not canonical**
-(see Part III), introducing the **causal inner product**
-$\langle\bar\gamma,\bar\gamma'\rangle_C=\bar\gamma^\top\operatorname{Cov}(\gamma)^{-1}\bar\gamma'$
-and a **Riesz-duality** theorem unifying the two spaces.
+(see Part III), introducing the **causal inner product** — the metric
+$g_C=\operatorname{Cov}(\gamma)^{-1}:\bar\Gamma\xrightarrow{\sim}\bar\Gamma^{*}$, so
+$\langle\bar\gamma,\bar\gamma'\rangle_C=\langle g_C\,\bar\gamma,\,\bar\gamma'\rangle$ — and a
+**Riesz-duality** theorem unifying the two spaces.
 [when-models-manipulate-manifolds-counting](../papers/when-models-manipulate-manifolds-counting.md)
 finds that a scalar *count* is represented not as a direction but as a **curved 1-D manifold**
 (a rippling helix in a ~6-D subspace), and that an attention head **compares** two counts by
@@ -323,8 +324,8 @@ through the $G=I$ Gram matrix — is one concrete shape the contribution in Part
 
 ### III.3 The same low-rank attention algebra, reused five times
 
-$W_{QK}=W_Q^\top W_K$ (the bilinear form $V\to V^{*}$) and $W_{OV}=W_O W_V$ (the endomorphism
-$V\to V$) are introduced in [framework](../papers/framework.md) and then *never leave*: induction-head prefix-matching is a positive-eigenvalue OV plus a
+$W_{QK}:V\to V^{*}$ (the bilinear form; coordinates $W_Q^\top W_K$) and $W_{OV}=W_O W_V:V\to V$
+(the endomorphism) are introduced in [framework](../papers/framework.md) and then *never leave*: induction-head prefix-matching is a positive-eigenvalue OV plus a
 K-composition QK; the IOI circuit is classified entirely in these terms; circuit tracing
 freezes the QK and linearises the OV; the attention papers decompose QK into features; the
 manifold paper finds QK implementing a rotation. **If you learn one piece of transformer
