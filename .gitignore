@@ -1,1 +1,16 @@
+# Large image mirror (omitted from the repo for size; regenerate locally)
 literature/papers/images
+
+# LaTeX build byproducts (the compiled *.pdf IS committed, on purpose, so the
+# surveys are readable directly on GitHub; everything else here is regenerable).
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.run.xml
+*.toc
+*.synctex.gz
