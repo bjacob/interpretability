@@ -10,7 +10,18 @@ Citations point at the **original source URLs** via `references.bib`, not at our
   spaces-and-maps terms, an adjoint-vs-dual notational convention, the interpretability lexicon).
 - **`01-landscape.tex`** → **`01-landscape.pdf`** — the landscape survey: six methodological
   groups, the shared mathematical substrate, where the math converges vs. fundamentally diverges,
-  and an agenda of candidate mathematical blind spots.
+  and (in brief) the candidate mathematical blind spots.
+- **`02`--`07`** — one document per approach group from the landscape's Part II, each expanded to
+  several pages (what the papers do, the shared mathematical core, how they diverge, what they
+  answer vs. leave open, and a "for the mathematician" section):
+  `02-group1-circuit-algebra`, `03-group2-superposition-geometry`,
+  `04-group3-dictionary-learning`, `05-group4-circuit-tracing`,
+  `06-group5-representation-geometry`, `07-group6-epistemics`.
+- **`08-open-problems.tex`** → **`08-open-problems.pdf`** — the landscape's Part VI expanded into
+  a standalone research agenda: seven mathematical blind spots (gauge/metric, the interference
+  Gram matrix, feature manifolds, error semantics of "linear", mechanistic faithfulness, latent
+  Lie structure, harmonic analysis), each with setup, what is open, and a concrete first step.
+- **`preamble.tex`** — shared LaTeX preamble (`\input` by every document).
 - **`references.bib`** — bibliography; one entry per source, keyed by the paper "stem", each
   pointing at its original URL.
 

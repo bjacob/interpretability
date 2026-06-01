@@ -1,0 +1,367 @@
+\input{preamble}
+\begin{document}
+\section*{An Agenda of Mathematical Blind Spots}
+
+\begin{callout}
+\textbf{What this is.} An expansion of Part~VI of the \emph{Landscape} survey into a standalone
+research agenda, written \emph{after} the six per-approach deep dives (Groups~1--6) and drawing
+on them throughout. The audience is a mathematician looking for places where the mechanistic
+interpretability (MI) literature leans on a structure it never makes precise --- and where
+making it precise is a tractable contribution rather than a slogan. It assumes the conventions of
+the \emph{ML~Concepts} primer (residual stream / feature space $V$; QK as a bilinear form
+$W_{QK}:V\to V^{*}$ vs.\ OV as an endomorphism $W_{OV}:V\to V$; adjoint $W^{*}$ vs.\ dual map
+$W^{\vee}$; the $GL(V)$ gauge of the stream; the Gram matrix $G=D^{*}D$).
+\end{callout}
+
+\subsection*{How to read this}
+
+Seven problems, ordered so that the most load-bearing comes first. They are not independent: a
+single fault line --- \emph{the field computes in a metric it never chose} --- runs through the
+first three, and a second --- \emph{the field never says what ``correct'' means} --- through the
+next two. The last two (Lie structure, harmonic analysis) are higher-risk lenses that might
+unify the rest. For each problem I give the precise setup, what is already known, what is open,
+and a concrete first step that a mathematician could take without waiting for any ML
+infrastructure. Throughout, ``leverage'' means: if solved, how many of the field's quantities
+become well-defined or how many empirical findings get explained.
+
+A one-line map of the dependency structure, expanded at the end: $\textbf{P1}$ (the metric/gauge
+problem) is the spine; \textbf{P2} and \textbf{P3} are what P1 buys you (a meaningful Gram
+matrix; a meaningful curvature); \textbf{P4}--\textbf{P5} are a parallel spine about
+approximation and correctness; \textbf{P6}--\textbf{P7} are the speculative unifiers.
+
+\subsection*{P1. A gauge theory of representations}
+
+\textbf{The problem.} The residual stream carries no privileged basis: conjugating the network by
+any $M\in GL(V)$ --- replacing each read map $W_{\mathrm{in}}\mapsto W_{\mathrm{in}}M^{-1}$ and
+each write map $W_{\mathrm{out}}\mapsto M\,W_{\mathrm{out}}$ --- leaves the function bit-identical
+\parencite{framework,privileged-bases-residual-stream}. Yet the field's most-used quantities are
+computed in the standard basis: cosine similarity between feature directions, the $\ell_2$
+reconstruction loss of a sparse autoencoder \parencite{towards-monosemanticity,scaling-monosemanticity},
+the off-diagonal of the Gram matrix that defines interference \parencite{toy-models-superposition}.
+All three are \emph{gauge-dependent}: they change under $M$. The field works in a metric it never
+chose, and exactly one paper notices \parencite{linear-representation-hypothesis-geometry}.
+
+\textbf{What is known.} The invariance principle can be stated cleanly. A scalar is gauge-invariant
+iff it is built only from the model's own maps and the natural pairing of a space with its dual.
+On the invariant side:
+\begin{itemize}
+\item the embedding--unembedding pairing $\langle\lambda(x),\gamma(y)\rangle$ the softmax consumes,
+  legitimate because the embedding space is the dual of the unembedding space,
+  $\Lambda\cong\bar\Gamma^{*}$ \parencite{linear-representation-hypothesis-geometry};
+\item the attention score $\langle W_{QK}x_k,x_q\rangle$, a learned bilinear form whose query/key
+  sides transform contragrediently;
+\item a linear probe $\langle w,x\rangle$ with $w\in V^{*}$ a covector;
+\item the inter-block \emph{virtual weight} $W_{\mathrm{in}}^{B}W_{\mathrm{out}}^{A}$, and with it
+  the metric-free relation ``$A$ never affects $B$'' $\iff \operatorname{im}(W_{\mathrm{out}}^{A})
+  \subseteq \ker(W_{\mathrm{in}}^{B})\iff W_{\mathrm{in}}^{B}W_{\mathrm{out}}^{A}=0$.
+\end{itemize}
+On the dependent side: anything that pairs two vectors of the \emph{same} space through the
+standard inner product, i.e.\ silently inserts the identity $G=I$ as a metric. The one principled
+metric in the corpus is the \textbf{causal inner product}
+$\langle\bar\gamma,\bar\gamma'\rangle_C=\bar\gamma^{\top}\operatorname{Cov}(\gamma)^{-1}\bar\gamma'$,
+i.e.\ the map $g_C=\operatorname{Cov}(\gamma)^{-1}:\bar\Gamma\xrightarrow{\sim}\bar\Gamma^{*}$
+\parencite{linear-representation-hypothesis-geometry}; but it is derived only for the
+\emph{output} space, and it is \emph{not unique} --- causal orthogonality fixes $d(d-1)/2$ of the
+$d(d+1)/2$ degrees of freedom of a symmetric form, leaving $\approx d$ undetermined (the paper
+chooses them by fiat).
+
+\textbf{What is open.}
+\begin{itemize}
+\item \emph{The interior.} There is no canonical, or even derived, metric for the residual stream
+  \emph{between} embedding and unembedding --- exactly the space every SAE and probe operates in.
+  What principle (data covariance? a transport from the output metric backward through the
+  frozen-linear model? invariance under the training dynamics?) should pick it?
+\item \emph{A gauge-invariant rewrite of the toolkit.} Restate superposition capacity, feature
+  splitting, probing, and SAE reconstruction in $GL(V)$-invariant terms. Concretely: \emph{what
+  should an SAE minimise if not the gauge-dependent $\ell_2$ loss?} A reconstruction error in a
+  derived metric $g$, $\mathbb{E}\,\lVert x-\hat x\rVert_g^2$, is the obvious candidate; the
+  content is in deriving $g$.
+\item \emph{The residual $d$ degrees of freedom.} Is the non-uniqueness of the causal inner
+  product a genuine indeterminacy of the model, or an artifact of the binary-concept setup?
+\end{itemize}
+
+\textbf{Normalization as Lie-subgroup reduction.} A clean, checkable sub-result: the architecture's
+normalization choice \emph{selects} the residual gauge group, and hence its Lie algebra. With no
+normalization the gauge is all of $GL(V)$ (algebra $\mathfrak{gl}(V)$). RMSNorm references only
+$\lVert x\rVert$, so it survives only $M\in O(V)$ (algebra $\mathfrak{so}(V)$, the antisymmetric
+maps). LayerNorm additionally references the mean, i.e.\ the line $\mathbb{R}\mathbf 1$, reducing
+the gauge to $\operatorname{Stab}_{O(V)}(\mathbf 1)\cong O(d-1)$. Read this way,
+\textcite{privileged-bases-residual-stream}'s RMSNorm-vs-LayerNorm experiments are, unknowingly, a
+study of \emph{which Lie subgroup the architecture leaves unbroken}; their finding that Adam's
+per-coordinate normalization is what actually breaks the basis says the \emph{optimizer}, not the
+architecture, performs the final reduction $O(V)\to\{e\}$.
+
+\textbf{First steps (metric-free, no ML stack needed).} (i) Write the gauge action on every named
+object in the corpus and tabulate invariant vs.\ dependent. (ii) Prove the SAE objective is
+$O(V)$- but not $GL(V)$-invariant, and characterise the orbit of ``equivalent'' dictionaries.
+(iii) Propose and analyse one derived interior metric and re-derive the incoherence condition
+$G\approx I$ in it.
+
+\subsection*{P2. The interference Gram matrix as a first-class object}
+
+\textbf{The problem.} Group~2's deep dive shows that essentially every quantitative claim about
+superposition is, under the hood, a statement about one matrix: the Gram matrix $G=D^{*}D$ of the
+feature dictionary $D:\mathbb{R}^{F}\to V$, $G_{ij}=\langle d_i,d_j\rangle$
+\parencite{toy-models-superposition,toy-model-of-interference-weights}. Its diagonal is $1$
+(unit features), its off-diagonal is \emph{interference}, and ``near-orthogonality'' means
+$G\approx I$. The literature treats $G$ implicitly; it deserves to be the explicit object.
+
+\textbf{What is known.} The forward geometry of $G$ is partly mapped: optimal feature
+configurations solve a generalized Thomson problem and land on uniform polytopes / tegum products
+\parencite{toy-models-superposition}; the existence of superposition is the metric-free statement
+that $D$ is non-injective; the cost is the metric-dependent operator norm $\lVert G-I\rVert$.
+Compressed sensing supplies a capacity bound through the coherence
+$\max_{i\ne j}|\langle d_i,d_j\rangle|$ and the restricted-isometry constant.
+
+\textbf{What is open.}
+\begin{itemize}
+\item \emph{Spectrum and block structure.} What is the eigenvalue distribution of $G$ for trained
+  models, and does \textbf{feature splitting}
+  \parencite{towards-monosemanticity,scaling-monosemanticity} correspond to a hierarchical /
+  nested-block structure of $G$ as $F$ grows? A renormalization-style account of splitting as
+  block-refinement of $G$ would be new.
+\item \emph{From representation interference to weight interference.} The off-diagonal of $G$
+  (representation-level) induces spurious ``interference weights'' between features at the
+  computational level \parencite{toy-model-of-interference-weights}. Make the map
+  $G\mapsto(\text{interference weights})$ precise --- it is presumably a quadratic/bilinear image
+  of $G-I$ through the surrounding weights --- and bound the latter by the former.
+\item \emph{Sharp capacity.} Tighten the sparsity--dimension--$\lVert G-I\rVert$ trade-off beyond
+  the order-of-magnitude compressed-sensing bound; the toy models hint at phase transitions
+  (the ``sticky'' dimensionalities $1/2,2/3,3/4,\dots$) that a packing-theoretic analysis might
+  pin down.
+\end{itemize}
+The whole problem inherits the metric-dependence of P1: $G=D^{*}D$ uses the adjoint $D^{*}$, hence
+a metric, so ``how close to $I$'' is only meaningful once P1 fixes the inner product.
+
+\textbf{First step.} Take the trained one-layer SAE dictionaries that are public-style replicable
+from \textcite{towards-monosemanticity} (or the toy models, which are fully specified) and study
+$G$ as a random-matrix / packing object: spectrum, coherence, and the geometry of its near-null
+structure under feature splitting.
+
+\subsection*{P3. A geometry of feature manifolds}
+
+\textbf{The problem.} The dominant working definition --- a feature is a \emph{direction}, a ray in
+$V$ --- is contradicted, for continuous or ordered quantities, by
+\textcite{when-models-manipulate-manifolds-counting}: a scalar count is carried by a curved
+$1$-dimensional \emph{manifold} (a rippling helix) in a low-dimensional subspace, and the model
+exploits the curvature. The linear-representation hypothesis (LRH) and the manifold picture are,
+as the \emph{Landscape} survey argues, mathematically incompatible accounts of what a feature
+\emph{is}, and nobody has reconciled them.
+
+\textbf{What is known.} For the counting task the manifold is approximately an orbit of a
+one-parameter subgroup (a helix is $\exp(tX)$ for a fixed screw generator $X$), and an attention
+head compares two counts by a $W_{QK}$ that rotates/twists one manifold onto another --- a
+near-isometry $\exp(\theta\Omega)$, $\Omega\in\mathfrak{so}$. The ``ringing'' of the embedding is
+(provably, in a toy model) the near-optimal low-rank projection of a circle.
+
+\textbf{What is open.}
+\begin{itemize}
+\item \emph{The right invariants.} What is the correct invariant description of a count/colour/date
+  manifold --- intrinsic dimension, curvature, holonomy --- and in \emph{which} metric (this is
+  P1 again: curvature is metric-dependent)? Is the ``feature manifold'' best seen as a homogeneous
+  space $G/H$ for a group $G$ acting on $V$?
+\item \emph{Is LRH a special case?} Conjecture: the LRH (feature = direction) is the
+  \emph{flat / categorical} degeneration of a manifold theory --- exact for unordered categorical
+  concepts (where the manifold is a discrete set of rays) and false for ordered/continuous ones
+  (where curvature is load-bearing because it lets a linear $W_{QK}$ implement a thresholded
+  comparison that a ray cannot). Formalise and test the dividing line.
+\item \emph{Attention as a near-isometry.} Make precise the sense in which a head acts as a
+  near-isometry between feature manifolds, and what ``near'' costs.
+\item \emph{Unsupervised discovery.} The manifold in \textcite{when-models-manipulate-manifolds-counting}
+  was found by hand. Is there a method (a manifold-learning analogue of dictionary learning) that
+  surfaces such structure automatically?
+\end{itemize}
+
+\textbf{First step.} Pin down, for the single worked example (the count helix), the cleanest
+invariant statement of its geometry, and prove the ray-vs-curve dichotomy for the comparison
+operation: that a $1$-D ray representation forces a monotone (un-thresholdable) comparison while a
+curved $\ge 2$-D one admits a genuine rotation-based threshold.
+
+\subsection*{P4. Error semantics of the three ``linearities''}
+
+\textbf{The problem.} The corpus uses the word ``linear'' for three operations with different error
+guarantees, and conflating them is where overclaiming creeps in (Group~4's deep dive makes this
+its spine):
+\begin{enumerate}
+\item \textbf{Exact, by freezing the nonlinearity} \parencite{framework}: with attention frozen,
+  the forward pass is \emph{honestly} linear in tokens --- zero error, but valid only on the
+  input it was frozen on, and it discards the derivative of the attention pattern (the QK
+  routing).
+\item \textbf{Local linearization} \parencite{circuit-tracing-computational-graphs}: a
+  Taylor/Jacobian expansion (the ``local replacement model'' with stop-gradients and error
+  nodes), exact at one prompt and only first-order away from it; errors compound across layers.
+\item \textbf{Learned sparse approximation} (SAEs/transcoders): a trained low-error fit that is
+  neither exact nor a derivative, and may be \emph{mechanistically unfaithful}
+  \parencite{toy-model-of-mechanistic-unfaithfulness}.
+\end{enumerate}
+
+\textbf{What is open.}
+\begin{itemize}
+\item \emph{Quantify each.} For (2), bound the divergence of the local replacement model as a
+  function of distance from the operating point and depth --- the field observes compounding
+  error empirically but has no bound. The relevant object is a product of layer Jacobians; its
+  conditioning controls the blow-up.
+\item \emph{The influence operator.} Attribution-graph node influence is the Neumann series
+  $B=(I-A)^{-1}-I$ for the (input-normalized) adjacency $A$
+  \parencite{circuit-tracing-computational-graphs}. When does it converge, and what does its
+  conditioning / spectral radius say about which circuits are robustly attributable?
+\item \emph{The combinatorics of QK attribution.} Unfreezing the QK form
+  \parencite{tracing-attention-feature-interactions,progress-on-attention} expands the score into
+  feature--feature pairings; the per-head matrix is ``typically approximately low-rank.'' Make
+  ``approximately low-rank'' a theorem and exploit it to compress the otherwise quadratic
+  attribution.
+\end{itemize}
+
+\textbf{First step.} Write the local replacement model as a composition of affine pieces with
+remainder, and state the first nontrivial bound on its off-prompt error in terms of the layer
+Jacobians' norms --- the quantity Group~4 needs and does not have.
+
+\subsection*{P5. A quantitative theory of mechanistic faithfulness}
+
+\textbf{The problem.} Group~6's cautionary result \parencite{toy-model-of-mechanistic-unfaithfulness}:
+a transcoder can be monosemantic, sparse, and low-MSE yet implement a \emph{different} algorithm
+that generalises differently off-distribution. ``Mechanistic faithfulness'' is currently a
+spectrum without a metric, and the field has no formal definition of the two objects it most
+relies on --- ``feature'' and ``circuit.''
+
+\textbf{What is known.} There is a clear qualitative hierarchy of how strongly a surrogate $g$ can
+match a model component $f$:
+\[
+\underbrace{g\approx f \text{ on-distribution}}_{\text{function match (weakest)}}
+\ \subsetneq\
+\underbrace{Dg\approx Df}_{\text{Jacobian match}}
+\ \subsetneq\
+\underbrace{\text{same step-by-step trajectory}}_{\text{mechanism match (strongest)}}.
+\]
+\textcite{toy-model-of-mechanistic-unfaithfulness} proposes \textbf{Jacobian matching}
+(penalise $\lVert J_{\mathrm{MLP}}-J_{\mathrm{transcoder}}\rVert_F^2$) as a partial fix, and notes
+the subtlety that superposition means one should \emph{not} match the Jacobian exactly (a feature
+spread over $k$ neurons contributes a tail of small singular values that is a superposition
+artifact). \textcite{interpretability-in-the-wild-ioi} already separates \emph{faithfulness}
+(matching behaviour) from \emph{completeness} (matching it under all knockouts) --- and shows
+faithfulness $\not\Rightarrow$ completeness.
+
+\textbf{What is open.}
+\begin{itemize}
+\item \emph{An off-distribution generalization bound.} Make precise: function-match controls error
+  on the training distribution; Jacobian-match controls it to first order in a neighbourhood;
+  trajectory-match controls it globally. State the theorem and the constants. This directly
+  formalises ``generalises differently off-distribution.''
+\item \emph{What to match, given superposition.} Determine the right \emph{partial} Jacobian-match
+  target (which singular subspace to match, which tail to ignore) as a function of the
+  superposition structure $G$ of P2.
+\item \emph{Define ``feature'' and ``circuit.''} Is a feature a direction (P1), a manifold (P3),
+  or an equivalence class of either under the gauge? Is a circuit a subgraph that is faithful,
+  complete, \emph{and} minimal \parencite{interpretability-in-the-wild-ioi}, and is that triple
+  even well-posed given redundancy (Backup heads)?
+\item \emph{What is an ``axiom'' of a circuit?} \textcite{interpretability-dreams} dreams that for
+  small circuits ``statements about their behaviour become questions of mathematical reasoning.''
+  What, precisely, would such a statement be, and what are its inference rules?
+\end{itemize}
+
+\textbf{First step.} Prove the hierarchy bound on a fully-specified toy (the $y=\operatorname{abs}(x)$
+transcoder of \textcite{toy-model-of-mechanistic-unfaithfulness}): exhibit two surrogates that
+function-match but differ in Jacobian, and bound their off-distribution divergence by the Jacobian
+gap.
+
+\subsection*{P6. Latent Lie structure}
+
+\textbf{The problem.} The corpus never invokes Lie algebras or commutators, yet Lie \emph{groups}
+are pervasive --- as gauge symmetries (P1) and as the ``addition-as-rotation'' geometry of
+algorithmic tasks --- and the only reason brackets are absent is that the field's additive core is
+\emph{abelian} by design (the residual stream adds). Non-commutativity enters exactly through
+(a) composition of maps and (b) group actions. Naming this structure is a lens, not yet a theorem.
+
+\textbf{What is known / proposable.}
+\begin{itemize}
+\item \emph{Gauge Lie algebras (from P1).} $\mathfrak{gl}(V)\supset\mathfrak{so}(V)\supset
+  \mathfrak{so}(V)\cap\mathbf 1^{\perp}$ as the normalization is tightened; the infinitesimal side
+  of the gauge theory.
+\item \emph{Compact tori in grokking.} \textcite{progress-measures-for-grokking} represents
+  $\mathbb{Z}/n\mathbb{Z}$ on circles $a\mapsto(\cos\omega_k a,\sin\omega_k a)$ --- a homomorphism
+  into the abelian Lie group $U(1)^{k}$, with addition the group law. Abelian, so every bracket
+  vanishes (which is \emph{why} only Fourier characters, never a commutator, are needed).
+\item \emph{Non-abelian rotations in counting.} The count manifold (P3) is a one-parameter-subgroup
+  orbit, and the comparison head is $\exp(\theta\Omega)$, $\Omega\in\mathfrak{so}$; in the
+  observed $\sim 6$-dimensional subspace the relevant rotations need not commute, so genuine
+  $\mathfrak{so}(6)$ with nonzero brackets is present and unremarked.
+\item \emph{A gauge-invariant interaction measure.} OV circuits are endomorphisms, so under the
+  gauge they conjugate, $W_{OV}\mapsto MW_{OV}M^{-1}$, and therefore
+  \[
+  [\,W_{OV}^{A},\,W_{OV}^{B}\,]\ \longmapsto\ M\,[\,W_{OV}^{A},\,W_{OV}^{B}\,]\,M^{-1}.
+  \]
+  The commutator's rank, spectrum, and vanishing are gauge-\emph{invariant}. So ``do two heads'
+  value-transformations commute?'' is a canonical, metric-free question --- unlike the cosine of
+  two feature directions --- and $\lVert[W_{OV}^{A},W_{OV}^{B}]\rVert$-class is the kind of
+  invariant interaction measure P1 asks for. (The QK form $V\to V^{*}$ has no intrinsic
+  commutator; forming one needs a metric, so QK interaction measures are gauge-\emph{dependent} ---
+  itself a consistent echo of the OV/QK type distinction.)
+\end{itemize}
+
+\textbf{What is open.} Whether the commutator measure tracks anything the field cares about
+(reorderability of layers in the path expansion; whether two circuits can be merged); whether the
+non-abelian rotation structure in counting generalises to other ``manipulate a quantity'' tasks;
+whether the gauge Lie algebra has Noether-style conserved quantities under gradient flow (the
+rescaling symmetry of \textcite{toy-models-superposition} and \textcite{softmax-linear-units} is a
+$\mathbb{R}^{\times}$ subgroup whose conserved charge is known).
+
+\textbf{First step.} Compute $[W_{OV}^{A},W_{OV}^{B}]$ for the head pairs of a known circuit
+(induction; the IOI Name Movers \parencite{induction-heads,interpretability-in-the-wild-ioi}) and
+test whether its (gauge-invariant) rank/spectrum distinguishes interacting from non-interacting
+pairs better than cosine similarity does.
+
+\subsection*{P7. Harmonic analysis as a possible unifier}
+
+\textbf{The problem.} Three different branches of mathematics describe ``the geometry of
+representations'' in this corpus and the field has not unified them: finite-group representation
+theory (the $\mathbb{Z}/n\mathbb{Z}$ characters of grokking
+\parencite{progress-measures-for-grokking}), continuous differential geometry (the curved
+manifolds of \parencite{when-models-manipulate-manifolds-counting}), and discrete packing /
+polytopes (the Thomson geometry of superposition \parencite{toy-models-superposition}). The
+tantalising hint is that \emph{periodicity / harmonic structure} appears independently in the
+first two --- group characters in grokking, the ``ringing''/Gibbs geometry of the count manifold
+--- and that a circulant Gram matrix (P2) has a Fourier eigenbasis.
+
+\textbf{What is open / the conjecture.} Is there a single framework --- Fourier analysis on the
+relevant group, spectral geometry of the relevant manifold, and the eigenstructure of the relevant
+(circulant or near-circulant) Gram matrix as facets of one harmonic-analytic object --- under
+which the polytope, character, and manifold pictures are special cases? This is the most
+speculative item and possibly the most fruitful: if the ``natural'' coordinates of a representation
+are harmonic (eigenfunctions of some symmetry), then P1's metric, P3's curvature, and P2's Gram
+spectrum are all read off the same decomposition.
+
+\textbf{First step.} Test the narrow version: for a task with a known symmetry group $\Gamma$
+(cyclic, dihedral, symmetric), does the trained representation decompose into isotypic components
+of $\Gamma$, and is the learned metric (P1) the one that makes that decomposition orthogonal?
+Grokking already gives the cyclic case; the dihedral/symmetric cases are clean next experiments.
+
+\subsection*{How the problems interlock}
+
+The agenda has two spines and two unifiers.
+
+\emph{The metric spine (P1$\to$P2, P3).} P1 is upstream of almost everything: the Gram matrix of
+P2 and the curvature of P3 are both metric-dependent, so ``how close to orthogonal'' and ``how
+curved'' are only well-posed once P1 fixes (or derives) the inner product. Solve P1 and P2/P3
+become quantitative; ignore it and they remain basis-dependent folklore. This is why P1 is ranked
+first despite being the most foundational rather than the most immediately publishable.
+
+\emph{The approximation/correctness spine (P4$\to$P5).} P4 is about the error of the
+\emph{methods} (exact vs.\ local-linear vs.\ learned), P5 about the error of the
+\emph{interpretations} (function vs.\ Jacobian vs.\ mechanism match). They meet at the Jacobian:
+P4's local-linearization error and P5's Jacobian-matching target are the same derivative, viewed
+from the method side and the epistemic side respectively.
+
+\emph{The unifiers (P6, P7).} P6 (Lie structure) is largely a reorganisation of P1 (gauge groups)
+and P3 (rotation/orbit geometry) into a single algebraic language, plus one genuinely new tool
+(the gauge-invariant OV-commutator). P7 (harmonic analysis) is the bet that P1's metric, P2's
+spectrum, and P3's curvature are facets of one spectral object; it is the riskiest and would
+subsume the most.
+
+\emph{Where a mathematician has the clearest edge.} P1, P5, and P6 are the items that are mostly
+mathematics --- gauge invariants, approximation bounds, Lie-algebraic invariants --- and need the
+least ML infrastructure to make progress on: each has a ``first step'' above that is a self-contained
+lemma on a fully-specified toy model. P2 and P3 reward someone who will also touch trained weights.
+P7 rewards someone willing to gamble on a unification that may not exist.
+
+\printbibliography
+\end{document}

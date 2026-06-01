@@ -3,7 +3,8 @@
 DOCS = MLConcepts 01-landscape \
        02-group1-circuit-algebra 03-group2-superposition-geometry \
        04-group3-dictionary-learning 05-group4-circuit-tracing \
-       06-group5-representation-geometry 07-group6-epistemics
+       06-group5-representation-geometry 07-group6-epistemics \
+       08-open-problems
 PDFS = $(DOCS:=.pdf)
 
 all: $(PDFS)
