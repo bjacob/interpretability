@@ -1,0 +1,178 @@
+\input{preamble}
+\begin{document}
+
+\section*{Group 5 --- Representation geometry}
+
+\begin{callout}
+\textbf{Where this sits.} This document expands Group~5 of the \emph{Landscape} survey (Part~II) into a standalone treatment. It is the mathematically richest of the six groups, and the one closest to a pure mathematician's instincts: it asks not \emph{which} computation a transformer performs but \emph{in what geometry} that computation lives. Notation follows the \emph{ML~Concepts} primer: dual map $W^{\vee}$ (canonical, metric-free) versus adjoint $W^{*}$ (metric-laden); $GL(V)$ the gauge group of a non-privileged space; the QK object a bilinear form $W_{QK}:V\to V^{*}$. The three papers are read for their geometry, not their engineering.
+\end{callout}
+
+
+\subsection*{The shared question}
+
+The Linear Representation Hypothesis (Part~I.1) gives the field its working ontology: a feature is a \emph{direction}, an activation is a sparse sum of feature directions, and intensity is the scalar coefficient. The bulk of the corpus (Groups~1--4) builds machinery on top of this ontology and rarely interrogates it. Group~5 interrogates it. Its three papers share a single methodological commitment: \textbf{take the geometry of representations seriously \emph{as geometry}}, and ask the three questions that commitment forces.
+
+\emph{First: what is the right metric?} Cosine similarity, projection, orthogonality, reconstruction error --- the verbs of the entire field --- are all metric notions, yet I.4 says the residual stream is a $GL(V)$-gauge space with no canonical inner product. So either these verbs are meaningless, or there is a metric the architecture supplies that nobody has written down. \textcite{linear-representation-hypothesis-geometry} confronts exactly this, and is the one paper in the corpus that treats the metric as something to \emph{derive}.
+
+\emph{Second: what is the right notion of ``feature''?} A direction is a one-dimensional linear subspace --- the simplest possible geometric object. Is it the right one? \textcite{when-models-manipulate-manifolds-counting} finds a scalar quantity represented not as a ray but as a \emph{curved one-dimensional manifold}, and shows the model exploits the curvature to compute. This is a category change: from linear algebra to differential geometry.
+
+\emph{Third: what group/harmonic structure underlies algorithmic tasks?} When a network learns an exact algorithm, the algorithm's symmetry group should be legible in the weights. \textcite{progress-measures-for-grokking} reverse-engineers modular addition and finds the \emph{characters of $\mathbb{Z}/n\mathbb{Z}$}: the network rediscovers the representation theory of a finite abelian group and computes by the convolution theorem.
+
+These three belong together not because they cite each other --- they largely do not --- but because each replaces the field's default geometry (Euclidean, flat, direction-as-feature) with a more honest one (a derived metric, a curved manifold, a group-character basis), and because a striking phenomenon, \textbf{circular/periodic structure}, recurs across all three. They are the corpus's three independent answers to ``the geometry is not what you assumed.''
+
+
+\subsection*{The papers}
+
+\subsubsection*{Park, Choe, Veitch --- the causal inner product and the duality of representations}
+
+\textcite{linear-representation-hypothesis-geometry} starts from the one piece of structure every decoder-only model exposes: the next-token law is a softmax of a \emph{bilinear pairing}. Writing $\lambda(x)\in\Lambda\simeq\mathbb{R}^{d}$ for the embedding (context) vector and $\gamma(y)\in\Gamma\simeq\mathbb{R}^{d}$ for the unembedding (word) vector,
+\[
+\mathbb{P}(y\mid x)\ \propto\ \exp\!\big(\lambda(x)^{\top}\gamma(y)\big).
+\]
+The two spaces are distinct in role: $\Lambda$ is the \emph{input/context} side, $\Gamma$ the \emph{output/word} side. The pairing $\lambda^{\top}\gamma$ is the canonical contraction of a space with (the dual of) another, and --- this is the crux --- it requires \textbf{no metric}. The softmax consumes only the pairing.
+
+\paragraph*{Three notions of ``linear representation,'' formalized by counterfactuals.}
+The paper's first move is to make ``feature = direction'' precise via counterfactual pairs. A binary concept $W$ (e.g.\ \texttt{male}$\Rightarrow$\texttt{female}) has an \emph{unembedding representation} $\bar\gamma_{W}$ if every counterfactual word pair satisfies $\gamma(Y(1))-\gamma(Y(0))\in\operatorname{Cone}(\bar\gamma_W)$ --- so $\gamma(\text{king})-\gamma(\text{queen})$ and $\gamma(\text{man})-\gamma(\text{woman})$ are parallel. (A \emph{cone}, not a subspace, because sign carries meaning.) Dually, an \emph{embedding representation} $\bar\lambda_{W}$ lives in $\Lambda$ and captures context differences that move $W$ while leaving every causally separable concept fixed. Two theorems tie these to the field's operational tools:
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Measurement} (Thm.~2): for any context $\lambda$, $\operatorname{logit}\mathbb{P}(Y=Y(1)\mid Y\in\{Y(0),Y(1)\},\lambda)=\alpha\,\lambda^{\top}\bar\gamma_{W}$ with $\alpha>0$. The unembedding direction \emph{is} an (idealized) linear probe --- one that, unlike a fitted probe, carries no information about correlated off-target concepts.
+\item \textbf{Intervention} (Thm.~5): adding $c\,\bar\lambda_{W}$ to the context representation steers $W$ monotonically while leaving every causally separable concept's probability \emph{constant}. The embedding direction \emph{is} a steering vector.
+\end{itemize}
+So measurement lives in $\Gamma$, intervention in $\Lambda$, and they are, a priori, different objects in different spaces.
+
+\paragraph*{The gauge symmetry, exactly as in I.4.}
+Because the loss sees the representations only through the softmax, the pairing is invariant under the simultaneous change (eq.~3.1)
+\[
+\gamma(y)\ \mapsto\ A\,\gamma(y)+\beta,
+\qquad
+\lambda(x)\ \mapsto\ (A^{\vee})^{-1}\lambda(x),
+\qquad A\in GL_d,\ \beta\in\mathbb{R}^{d},
+\]
+with $(A^{\vee})^{-1}=A^{-\top}$ in coordinates. This is precisely the readout instance of the residual-stream gauge: the unembedding side transforms by $A$, the embedding side \emph{contragrediently} by the inverse dual map, so $\lambda$ is a covector --- the statement $\Lambda\cong\bar\Gamma^{*}$. The additive $\beta$ shifts every logit equally and softmax discards it. The consequence is sharp and stated bluntly: for a fixed inner product, $\langle\bar\gamma_W,\bar\gamma_Z\rangle\neq\langle A\bar\gamma_W,A\bar\gamma_Z\rangle$ in general, so \textbf{the Euclidean inner product is not identified by training}. There is no a priori reason to prefer Euclidean cosine similarity to any other.
+
+\paragraph*{The causal inner product.}
+The paper supplies a principle: \emph{causally separable concepts should be orthogonal}. An inner product $\langle\cdot,\cdot\rangle_{C}$ on the difference space $\bar\Gamma$ is \emph{causal} if $\langle\bar\gamma_W,\bar\gamma_Z\rangle_{C}=0$ whenever $W,Z$ can vary freely of one another. The payoff is a unification (Thm.~7): under a causal inner product, the \textbf{Riesz isomorphism} $\bar\gamma\mapsto\langle\bar\gamma,\cdot\rangle_{C}$ sends each concept's unembedding representation $\bar\gamma_{W}$ to its embedding representation $\bar\lambda_{W}$:
+\[
+\langle\bar\gamma_{W},\cdot\rangle_{C}=\bar\lambda_{W}^{\top}.
+\]
+The metric is exactly the bridge $\bar\Gamma\xrightarrow{\sim}\bar\Gamma^{*}\cong\Lambda$ that fuses the measurement object and the intervention object into one. (Were the causal inner product Euclidean, this would be the bare transpose; Riesz is the metric-aware generalization --- the musical isomorphism of the \emph{ML~Concepts} primer \S4.) To make it computable, one assumption --- that the value of $W$ on a \emph{randomly sampled vocabulary word} is statistically independent of the value of a separable $Z$ --- yields the explicit form (Thm.~8, with the free diagonal set to $I$):
+\[
+\langle\bar\gamma,\bar\gamma'\rangle_{C}\ :=\ \bar\gamma^{\top}\operatorname{Cov}(\gamma)^{-1}\bar\gamma',
+\qquad
+g_{C}=\operatorname{Cov}(\gamma)^{-1},
+\]
+the covariance taken over the uniform distribution on the vocabulary. This is a \emph{whitening} / Mahalanobis metric: it makes the Euclidean structure causal in the transformed coordinates $g(y)=\operatorname{Cov}(\gamma)^{-1/2}\gamma(y)$, $\ell(x)=\operatorname{Cov}(\gamma)^{1/2}\lambda(x)$, where embedding and unembedding representations literally coincide. Empirically on LLaMA-2, the heatmap of $|\langle\bar\gamma_W,\bar\gamma_Z\rangle_{C}|$ over 27 concepts is near-diagonal with interpretable block structure; the Euclidean metric does ``somewhat'' respect this (hinting that training's implicit regularization keeps $\operatorname{Cov}(\gamma)$ roughly isotropic), but the causal metric is visibly cleaner; an arbitrary $M=A^{\top}A$ destroys the structure entirely.
+
+\subsubsection*{Modell et al.\ via Anthropic --- counting on a curved manifold}
+
+\textcite{when-models-manipulate-manifolds-counting} studies how Claude~3.5~Haiku predicts line breaks in fixed-width text --- a task requiring it to count characters since the last newline, hold the (implicit) line width, subtract, and compare against the next word's length. The reverse-engineering yields the paper's title phenomenon.
+
+\paragraph*{A scalar as a rippling helix.}
+A linear probe recovers character count with $R^{2}=0.985$, so the count is \emph{linearly decodable} --- yet it is \emph{not} stored as a single direction. Averaging the layer-2 residual stream over each count value $1,\dots,150$ and taking PCA, the top 6 components capture 95\% of the variance, and the 150 mean vectors trace a \textbf{twisting curve} --- a helix in PCs 1--3, a more intricate twist in PCs 4--6. This is a one-dimensional feature manifold (intrinsic dimension 1, the count) embedded with high curvature in an extrinsic subspace of dimension $1<d\ll N$. A family of $\sim$10 discrete crosscoder features, with overlapping sinusoidal tuning curves and dilating receptive fields, \emph{tile} the manifold, giving it local coordinates --- the ``feature/manifold duality'': discrete features and a continuous curve are two descriptions of one object.
+
+\paragraph*{Ringing as a Gibbs phenomenon.}
+The cosine-similarity matrix of these mean vectors (and of the probes, and of the feature decoders) shows a wide diagonal band flanked by \emph{off-diagonal ripples}: a count is similar to its neighbours, anti-similar a little further out, similar again further still. The paper names this \textbf{ringing} in the signal-processing sense (Gibbs phenomenon). It is the geometric signature of a clean fact: take the ideal similarity matrix of a discretized circle of unit vectors (each similar to its neighbours, orthogonal far away) --- trivially realizable in $150$ dimensions --- and project to its top few eigenvectors; the low-rank approximation \emph{must} ring. The rippled embedding is the \textbf{optimal} (PCA-truncation) low-dimensional embedding of the high-curvature circle, and a particle simulation (attraction to near neighbours, repulsion otherwise, on a sphere) finds the same rippled curve dynamically. In the feature/superposition language, the ringing is exactly \emph{interference} forced by packing many receptive fields into few dimensions (Part~I.2, III.1). Why curvature at all? A 1-D ray would force either norm explosion ($\|v_{150}\|\gg\|v_1\|$, fatal under normalization) or loss of resolution between adjacent counts; curvature buys distinguishability at bounded norm.
+
+\paragraph*{Attention as a near-isometry that twists.}
+The boundary-detection mechanism is where geometry does the computing. To compare the current count $i$ against the line width $k$, a ``boundary head'' uses its QK bilinear form: pushing the line-width probes through $W_{K}$ and the count probes through $W_{Q}$ and taking the joint PCA, one sees that $W_{QK}$ \textbf{rotates/twists} one counting manifold to align with the other at an \emph{offset}, so that count $i$ aligns with width $k=i+\epsilon$. In the residual stream the two probe families are weakly aligned (max cosine $\sim$0.25); through the boundary head's QK they become nearly perfectly aligned ($\approx 1$) on the off-diagonal $i<k$; through a random head, no structure. The head thus produces a large attention score precisely when the count is just short of the width --- a thresholded comparison, impossible for a 1-D encoding (where a linear comparison can only multiply the two scalars, giving a monotone product with no threshold). Several boundary heads with different offsets ``tile'' the range of characters-remaining stereoscopically. The alignment being near-perfect in absolute cosine terms is a statement that $W_{QK}$ acts as a \textbf{near-isometry} between the two manifolds, up to the deliberate offset. Causal subspace ablations and mean-substitution interventions on the $\sim$6-D count subspace (and the 2-D characters-remaining subspace) change the line-break prediction as predicted, and only when the next token is a newline --- validating that these subspaces are the causal carriers. The same circular/rippled geometry recurs in the token-length embeddings, and (per the cited Modell et al.) in colors, dates, and years.
+
+\subsubsection*{Nanda et al.\ --- modular addition as Fourier multiplication}
+
+\textcite{progress-measures-for-grokking} trains a one-layer transformer on $a+b \bmod P$ ($P=113$) and fully reverse-engineers it. The learned algorithm is the convolution theorem for the cyclic group.
+
+\paragraph*{Inputs on circles; addition as angle addition.}
+The embedding maps each input onto sines and cosines at a sparse set of \textbf{key frequencies} $\omega_k=2\pi k/P$ --- placing $a$ at $(\cos\omega_k a,\sin\omega_k a)$, a point on a circle. These are the \textbf{characters of $\mathbb{Z}/P\mathbb{Z}$}, the irreducible representations $a\mapsto e^{2\pi i k a/P}$ of the cyclic group; the embedding matrix $W_E$ is sparse in the Fourier basis, with nonneligible norm at only $\sim$6 frequencies, of which 5 are used downstream. The attention and MLP layers then combine these via the angle-addition identities
+\[
+\cos\omega_k(a{+}b)=\cos\omega_k a\cos\omega_k b-\sin\omega_k a\sin\omega_k b,
+\qquad
+\sin\omega_k(a{+}b)=\sin\omega_k a\cos\omega_k b+\cos\omega_k a\sin\omega_k b,
+\]
+realized as degree-2 polynomials of single-frequency trig functions (84.6\% of MLP neurons have $>$85\% of their variance explained by one frequency). The neuron--logit map $W_{L}=W_U W_{out}$ is \textbf{approximately rank 10} --- two directions ($\cos\omega_k$, $\sin\omega_k$) per key frequency:
+\[
+W_{L}\approx\sum_{k\in\{14,35,41,42,52\}}\cos(\omega_k)\,u_k^{\top}+\sin(\omega_k)\,v_k^{\top},
+\]
+with Frobenius residual under 0.55\%. The readout computes, for each candidate $c$, $\cos\omega_k(a+b-c)=\cos\omega_k(a{+}b)\cos\omega_k c+\sin\omega_k(a{+}b)\sin\omega_k c$, and \emph{sums over $k$}: the cosine waves constructively interfere at $c^{*}=a+b\bmod P$ and destructively interfere elsewhere. That constructive/destructive interference of characters is the inverse Fourier transform picking out the answer.
+
+\paragraph*{Progress measures and three phases.}
+From the mechanism the authors build two \emph{progress measures}, each an ablation in Fourier space. \textbf{Restricted loss} keeps only the constant term and the 20 key-frequency components of the logits (zeroing everything else); \textbf{excluded loss} does the opposite, removing only the key frequencies (measured on \emph{training} data, since a memorizing solution is spread across all frequencies and barely notices). Tracking these across training resolves the apparently sudden grokking transition into three continuous phases: \emph{memorization} (train and excluded loss fall, test and restricted loss high), \emph{circuit formation} (excluded loss \emph{rises} and restricted loss falls as the Fourier circuit forms under weight decay, well before generalization), and \emph{cleanup} (weight decay sheds the now-redundant memorizing components; test loss drops sharply and the Gini coefficient of $W_E,W_L$ in the Fourier basis spikes). The generalizing circuit is built \emph{before} the test loss moves; grokking is the later removal of the memorized scaffolding.
+
+
+\subsection*{Common mathematical core}
+
+\begin{callout}
+Three papers, one recurring trio: \textbf{(i)} the inner-product/metric question; \textbf{(ii)} circular/periodic structure; \textbf{(iii)} features as genuinely geometric, not merely linear-algebraic, objects.
+\end{callout}
+
+\paragraph*{The metric question, in three guises.}
+All three papers turn on the choice of inner product, the very choice I.4 says the architecture leaves open. \textcite{linear-representation-hypothesis-geometry} makes it the central object: it \emph{derives} a non-Euclidean metric $\operatorname{Cov}(\gamma)^{-1}$ from a semantic principle and shows everything (cosine, projection, probe, steering vector) only becomes well-posed once it is fixed. \textcite{when-models-manipulate-manifolds-counting} works entirely in cosine-similarity matrices and PCA --- i.e.\ it \emph{adopts} the Euclidean metric as a tool, and the very ``ringing'' it studies is a statement about those (Euclidean) inner products; the alignment a boundary head achieves is measured as a cosine. \textcite{progress-measures-for-grokking} privileges the \emph{Fourier basis}, an orthonormal basis for the group algebra, and reads sparsity and rank in that basis. In all three the operative geometric quantities are inner products --- the open question of \emph{which} inner product (Part~III.1) is precisely what distinguishes ``taking geometry seriously'' from defaulting to $G=I$.
+
+\paragraph*{Circular and periodic structure, arising twice independently.}
+The most striking convergence: a discretized circle of vectors with neighbour-similarity surfaces in two unrelated tasks. In grokking it is exact and \emph{algebraic} --- the characters of $\mathbb{Z}/P\mathbb{Z}$, points $(\cos\omega_k a,\sin\omega_k a)$ genuinely on a circle, with addition as rotation. In counting it is approximate and \emph{geometric} --- the count manifold is (the paper argues) a low-rank projection of an idealized circle, and the Gibbs ringing in its similarity matrix is the fingerprint of that projection; the counting paper's own appendix connects its construction to Fourier features. Periodicity is thus a shared phenomenon under two faces: a group's character table on one side, the spectral truncation of a curved embedding on the other.
+
+\paragraph*{Features as geometric objects.}
+None of the three is content with ``feature = coordinate.'' A concept is a \emph{cone} closed under a derived duality (LRH); a count is a \emph{curve} the model rotates (counting); an input is a \emph{point on a circle} the model rotates (grokking). In every case the feature is an object with shape --- a direction up to a metric, a manifold with curvature, an orbit under a group --- and the computation is a geometric action on that shape (Riesz transport, QK twist, character convolution).
+
+
+\subsection*{How they diverge}
+
+The unity is real but thin; underneath, these are three different branches of mathematics, and the divergence is instructive.
+
+\begin{callout}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.30\textwidth}>{\raggedright\arraybackslash}p{0.30\textwidth}>{\raggedright\arraybackslash}p{0.30\textwidth}@{}}
+\toprule
+\textbf{LRH geometry} & \textbf{Counting manifolds} & \textbf{Grokking} \\
+\midrule
+A \emph{non-Euclidean metric} on a \emph{flat} space & \emph{Genuinely curved} 1-D manifolds in a flat ambient space & \emph{Finite-group representation theory} \\[0.4em]
+The space stays $\mathbb{R}^d$; only the inner product is in question & The object is a submanifold; intrinsic dimension and curvature are the content & The object is the group algebra $\mathbb{C}[\mathbb{Z}/P\mathbb{Z}]$ and its character decomposition \\[0.4em]
+Riemannian/inner-product geometry, duality, Riesz & Differential geometry of curves; spectral/Fourier embedding & Harmonic analysis on a finite abelian group; convolution theorem \\
+\bottomrule
+\end{tabular}
+\end{callout}
+
+\textcite{linear-representation-hypothesis-geometry} never leaves flat space: $\bar\Gamma\cong\mathbb{R}^d$ throughout, and the entire drama is which positive-definite form to put on it. Curvature never enters; the feature is still a direction. \textcite{when-models-manipulate-manifolds-counting} makes curvature the whole point: the feature is a submanifold whose curvature is functionally load-bearing (it enables the rotational comparison), and a straight ray would not do. These two are, as the \emph{Landscape} survey notes (IV.1), \textbf{mathematically incompatible accounts of what a feature is} --- direction versus manifold --- and nobody has reconciled them. \textcite{progress-measures-for-grokking} sits in a third world: the relevant structure is neither a metric nor a curve but a \emph{group}, and the relevant theorem is the convolution theorem. Discrete-algebraic (characters, exact identities) versus continuous-geometric (curvature, near-isometry, Gibbs) is the deepest fault line within the group (Part~IV.4): grokking's mathematics is exact and finite; counting's is approximate and analytic; LRH's is exact but purely about the choice of bilinear form.
+
+
+\subsection*{What they answer, and what they don't}
+
+Honesty about the limits matters more here than elsewhere, because the geometry is seductive.
+
+\paragraph*{The causal inner product is non-unique, and only for the output space.}
+The orthogonality principle imposes $d(d-1)/2$ constraints, but a positive-definite form has $d(d-1)/2+d$ degrees of freedom; so there remain \textbf{$d$ residual degrees of freedom} (a free positive diagonal $D$), and the paper has \emph{no} principle to fix them --- it simply sets $D=I$. The ``causal inner product'' is therefore a $d$-parameter family, not a canonical metric; the field's central metric question is narrowed, not closed. Worse for the broader program: the construction lives on $\bar\Gamma$, the \emph{unembedding/output} space, where a clean vocabulary distribution gives $\operatorname{Cov}(\gamma)$. The \textbf{residual-stream interior} --- where SAEs, transcoders, and attribution graphs do their metric-dependent work (Part~III) --- has no analogous derivation and remains wide open. And the whole framework is built for \emph{binary, categorical} concepts; whether it even applies to continuous or ordered variables is unaddressed --- which is precisely where the next paper lives.
+
+\paragraph*{The manifold parametrization is hand-built and does not scale.}
+The counting paper's clarity is bought by knowing the variable in advance. The authors are explicit: they could parametrize the count manifold only because the count is a known scalar they could sweep ($k=15,\dots,150$ in a synthetic dataset); for ``more complex, difficult-to-parametrize concepts'' the method ``becomes difficult to execute correctly,'' and the geometric view is ``expensive in researcher time and potentially limited in scope.'' It is an existence proof of a feature manifold, not a general recipe for finding one. There is, as yet, no unsupervised detector of geometric structure (intrinsic dimension, curvature) analogous to the SAE for directions --- the paper explicitly calls for one.
+
+\paragraph*{Grokking explains the mechanism but cannot predict \emph{when}.}
+The progress measures vary smoothly and are causally linked to the phase change, dissolving the apparent discontinuity into three phases. But the authors concede they ``lack a general notion of criticality'' to predict the timing of the transition ex ante; nor is the analysis task-independent --- the measures are bespoke to modular addition, requiring the full reverse-engineering first. The result is a beautiful post-hoc anatomy, not a predictive theory of emergence.
+
+\paragraph*{Is the LRH false for continuous/ordered variables?}
+This is the live question the group raises and does not settle. The LRH paper validates direction-features for categorical concepts (and finds one concept, \texttt{thing}$\Rightarrow$\texttt{part}, with no linear representation at all). The counting paper shows an \emph{ordered} scalar living on a curve, not a direction. The natural conjecture --- that LRH is the categorical special case of a manifold theory, with directions the manifolds of discrete unordered concepts --- is unproven, and reconciling it would require a metric-aware, gauge-invariant notion of a feature manifold that does not yet exist.
+
+
+\subsection*{Connections}
+
+\paragraph*{To Part~III (the metric).}
+This group supplies the corpus's only paper that \emph{confronts} the inner-product question Part~III identifies as the central seam. \textcite{linear-representation-hypothesis-geometry}'s $g_C=\operatorname{Cov}(\gamma)^{-1}$ is the one worked answer to ``which $G$?'' --- a derived, non-Euclidean metric on the output space, exactly the kind of object Part~III(1) and the Part~VI agenda call for. It also instantiates Part~III's gauge story concretely: eq.~3.1 is the readout-space gauge $\gamma\mapsto A\gamma+\beta$, $\lambda\mapsto(A^{\vee})^{-1}\lambda$, with the metric-free pairing $\langle\lambda,\gamma\rangle$ the invariant and $\Lambda\cong\bar\Gamma^{*}$ the duality. The counting paper, by contrast, shows what happens when one \emph{adopts} the Euclidean metric uncritically: the ``ringing'' it studies is partly an artifact of reading a curved manifold through $G=I$, so a properly metric-free account of feature manifolds is, as Part~IV.1 notes, doubly open.
+
+\paragraph*{To Part~IV (the forks).}
+The direction-versus-manifold fork (IV.1) \emph{lives in this group}: LRH on one side, counting on the other, with grokking's circle-points a curious intermediate (discrete points that happen to lie on a continuous orbit). The discrete-algebraic versus continuous-geometric fork (IV.4) is the within-group divergence above. And the group is the main evidence for the survey's most speculative conjecture: that \textbf{harmonic analysis is the common generalization}. Fourier on a finite group (grokking), Fourier features / spectral truncation of a curved embedding (counting), and --- via Riesz --- the diagonalization of a covariance metric (LRH) are not unrelated; circulant Gram matrices, group characters, and rippled manifolds all live under the heading of harmonic analysis. This is conjecture, but it is the group that makes it tempting.
+
+\paragraph*{Latent Lie/group structure.}
+Beneath all three sits a continuous symmetry the papers gesture at without fully exploiting. Grokking's key frequencies are a torus action: each frequency $k$ supplies a $U(1)$ acting by rotation $(\cos\omega_k\cdot,\sin\omega_k\cdot)$, and the model lives on (a sparse slice of) $U(1)^{k}$, with addition the group operation. Counting's boundary head realizes a rotation in $\mathrm{SO}(d)$ of the count subspace --- the ``twist'' that aligns two manifolds is, to good approximation, an element of the special orthogonal group acting near-isometrically. Even LRH's gauge $A\in GL_d$ is a Lie group, with the causal metric singling out the $O(d)$ subgroup that preserves it. The recurring picture is a representation of a Lie group ($U(1)^k$, $\mathrm{SO}(d)$, a subgroup of $GL_d$) acting on the residual stream --- the natural language for the next theory.
+
+
+\subsection*{For the mathematician}
+
+This group is where a pure mathematician has the most leverage, because the field's geometry is mostly assumed rather than derived. Three opportunities, in increasing order of ambition.
+
+\paragraph*{A gauge theory and a canonical metric.}
+The residual stream is a $GL(V)$-gauge bundle (I.4); the LRH paper shows that on the output space a semantic principle (causal orthogonality) nearly pins down the gauge, leaving $d$ residual degrees of freedom. The mathematician's questions: Is there a further principle that fixes the diagonal $D$ and yields a \emph{canonical} metric? Does an analogous derivation exist for the residual-stream interior, where the relevant covariance is over \emph{activations} rather than vocabulary words? Can the entire suite of metric-dependent results (interference, SAE reconstruction, cosine clustering --- Part~III.1) be re-expressed either gauge-invariantly (via virtual weights, image-in-kernel) or with respect to a single principled metric? This is, essentially, asking for the connection and curvature of the gauge bundle, and for the canonical reduction of the structure group.
+
+\paragraph*{A genuine geometry of feature manifolds.}
+The counting paper is an existence proof that features can be curved submanifolds; what is missing is the theory. The objects beg for intrinsic-geometric treatment: the \emph{intrinsic dimension} of a feature manifold (here 1, but in general?), its \emph{curvature} (here functionally exploited, and provably near-optimal for a capacity/resolution tradeoff --- a statement crying out for a clean variational characterization), and the action of attention as a map between manifolds. The claim that a boundary head's $W_{QK}$ acts as a \textbf{near-isometry} (twist plus offset) is a precise, testable differential-geometric statement: which submanifolds can a rank-$d_{\text{head}}$ bilinear form carry isometrically onto which others, and with what distortion? A theorem relating the optimal embedding dimension to the curvature and the noise floor (the paper's particle model is the physicist's version) would subsume the counting result and connect to classical work on space-filling curves and almost-isometric embeddings.
+
+\paragraph*{Harmonic analysis as a unifier.}
+The boldest prize is the conjecture of Part~IV.4 made into mathematics. Grokking gives Fourier analysis on $\mathbb{Z}/P\mathbb{Z}$ exactly; counting gives spectral truncation of a circle embedding approximately; LRH gives a covariance whose eigendecomposition defines the metric. Is there one framework --- harmonic analysis on a (possibly continuous, possibly non-abelian) group, or spectral geometry of a data-induced operator --- of which all three are special cases? Concretely: the eigenstructure of a circulant Gram matrix \emph{is} the character table; the rippled manifold \emph{is} a band-limited circle; the causal metric \emph{is} a whitening that orthogonalizes a representation. Unifying these would mean showing that ``the geometry of representations'' is, at bottom, the harmonic analysis of whatever group the task carries --- with the Linear Representation Hypothesis, the manifold picture, and the Fourier algorithm as three readings of one Plancherel-type decomposition. It is the most speculative item in the entire survey, and the one most clearly suited to a mathematician's tools.
+
+
+\printbibliography
+\end{document}

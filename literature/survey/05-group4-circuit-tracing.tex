@@ -1,0 +1,131 @@
+\input{preamble}
+\begin{document}
+
+\section*{Group 4 --- Circuit tracing / attribution}
+
+\begin{callout}
+\textbf{Where this sits.} Group 1 (\emph{Landscape}, Part I.3, II.1) showed that an \emph{attention-only} transformer can be rewritten \emph{exactly} into readable linear paths, by freezing the one nonlinearity (the softmax pattern). That rewrite stalls on MLPs: the pointwise nonlinearity does not freeze, and MLPs hold $\sim$2/3 of the parameters. Group 4 is the engineering and mathematics of getting the rewrite past the MLP --- at the cost of trading "exact" for "locally linear" --- and then circling back to attack the very thing Group 1 and the rest of Group 4 had \emph{frozen}: the QK bilinear form. Notation follows the \emph{ML~Concepts} primer: residual stream as a running sum (§1.3); the attention split $W_{QK}:V\to V^{*}$ (a bilinear form, the \emph{where}) and $W_{OV}=W_OW_V:V\to V$ (an endomorphism, the \emph{what}) (§1.4); transcoders and the cross-layer transcoder (CLT) (§3); virtual weights $W_{\text{in}}^{B}W_{\text{out}}^{A}$ (§1.3); and the adjoint $W^{*}$ (metric-laden) versus dual $W^{\vee}$ (metric-free) convention.
+\end{callout}
+
+\subsection*{The shared question}
+
+The four papers of this group answer one question: \emph{how do you scale Group~1's exact algebraic rewrite to a real, MLP-bearing frontier model?} The single move that organizes everything is a substitution of error semantics. Group~1's tractability rested on \textbf{freezing} attention --- which, as the primer stresses (§1.4), is \emph{not} a linearization but an \textbf{exact rewriting} of the head's output that happens to be linear in the value-carrying copy of the stream. Group~4 keeps that exact-frozen-attention move but adds two further ingredients to handle the MLP:
+
+\begin{enumerate}[leftmargin=1.4em,itemsep=2pt]
+\item Replace each MLP by a \textbf{cross-layer transcoder} (CLT) --- a Group-3-style sparse dictionary model that, crucially, predicts the MLP's \emph{output} from its \emph{input} (it models \emph{computation}, not just representation), so that feature-to-feature interactions "bridge over" the MLP nonlinearity and become linear.
+\item Pin the residual difference between the true model and this approximate model, on \emph{one prompt}, with per-(token,\,layer) \textbf{error nodes}.
+\end{enumerate}
+
+The result is the \textbf{local replacement model}: CLT-for-MLP, frozen attention patterns and frozen normalization denominators, plus error nodes. On the prompt it was built for, it reproduces the underlying model's activations and logits \emph{exactly} (the errors are pinned), yet its only surviving nonlinearities are the feature pre-activations --- so it is, as a function of feature activations, an honest linear network. Differentiating it (with stop-gradients on every frozen nonlinearity) yields a \textbf{linear attribution graph}: nodes are features, token embeddings, error terms, and output logits; edges are exact linear attributions. This is \textcite{circuit-tracing-computational-graphs} (the method) and \textcite{on-the-biology-of-a-large-language-model} (its frontier application).
+
+The two remaining papers attack the part that was frozen. Freezing attention discards the QK circuit --- \emph{why} the model attends where it does --- which the methods paper itself flags as its most damaging limitation. \textcite{tracing-attention-feature-interactions} and \textcite{progress-on-attention} \textbf{unfreeze the QK bilinear form} and decompose the attention score into feature--feature pairings. The four belong together because they are one pipeline seen at two stages: the OV/MLP attribution that takes attention as given, and the QK attribution that explains the attention.
+
+\subsection*{The papers}
+
+\subsubsection*{Circuit Tracing --- the method}
+
+\textcite{circuit-tracing-computational-graphs} fixes the CLT architecture precisely. Write $x^{\ell}$ for the underlying model's residual stream at layer $\ell$ and $y^{\ell}$ for its MLP output. A CLT feature reads at its home layer and writes to \emph{all} later layers:
+\[
+a^{\ell} \;=\; \operatorname{JumpReLU}\!\big(W_{\text{enc}}^{\ell}\, x^{\ell}\big),
+\qquad
+\hat y^{\ell} \;=\; \sum_{\ell'=1}^{\ell} W_{\text{dec}}^{\ell'\to\ell}\, a^{\ell'},
+\]
+trained jointly across layers on $L_{\text{MSE}}=\sum_{\ell}\lVert \hat y^{\ell}-y^{\ell}\rVert^{2}$ plus a decoder-norm-weighted sparsity penalty $L_{\text{sparsity}}=\lambda\sum_{\ell,i}\tanh\!\big(c\lVert W_{\text{dec},i}^{\ell}\rVert\, a_i^{\ell}\big)$. The "cross-layer" reach is a deliberate device: it collapses a feature smeared across several MLP layers (the conjectured \emph{cross-layer superposition}) into one node, which both shortens paths and improves the rewrite. Swapping the CLT in for every MLP gives a \textbf{replacement model} that matches the underlying model's next token on $\sim$50\% of (deliberately non-trivial) prompts --- a meaningful but partial fit.
+
+Because that 50\% gap would compound across layers, single-prompt analysis instead uses the \textbf{local replacement model}: CLT-for-MLP, but with attention patterns and normalization denominators \emph{copied} from the true forward pass on the prompt $p$, and an \textbf{error adjustment} at every $(\text{token},\text{layer})$ equal to the residual $y^{\ell}_{\text{true}}-\hat y^{\ell}$. The authors are explicit about the analogy: this is "similar in spirit to a Taylor approximation of a function $f$ at a point $a$; both agree locally\dots but diverge\dots as you move away." On $p$ it agrees \emph{exactly} (zero remainder); off $p$ it is only first-order. Viewed as one giant fully connected network spanning all token positions, its weights are exactly the \textbf{virtual weights} of the primer's §1.3 --- summed over all linear paths through attention OVs and residual connections, but \emph{not} through MLPs (those are now the CLT) and \emph{not} through the QK pattern (frozen).
+
+The \textbf{attribution edge} from source feature $s$ (layer $\ell_s$, position $c_s$) to target $t$ (layer $\ell_t$, position $c_t$) is
+\[
+A_{s\to t}
+\;=\;
+a_s\sum_{\ell_s\le \ell <\ell_t}\big(W_{\text{dec},\,s}^{\ell_s\to\ell}\big)^{*}\,
+J^{\blacktriangledown}_{c_s,\ell\,\to\, c_t,\ell_t}\,
+W_{\text{enc},\,t}^{\ell_t},
+\]
+where $J^{\blacktriangledown}$ is the Jacobian of the underlying model with a \textbf{stop-gradient} on every nonlinearity (MLP outputs, attention patterns, normalization denominators), and $a_s$ is the source activation. (We write the decoder contraction with the adjoint $W^{*}$ to flag that an inner product on the stream is being used; the architecture supplies none, cf. Part III.) The stop-gradients are what make this exact rather than approximate: with all nonlinearities detached, the pre-activation $h_t$ of any feature is \emph{literally} the sum of its incoming edges, $h_t=\sum_{s\in\mathcal S_t} w_{s\to t}$ --- the graph is a genuine linear decomposition of each feature's activity, not a saliency heuristic. Equivalently, $w_{s\to t}$ is the derivative of $t$'s pre-activation with respect to $a_s$.
+
+The graph is dense (millions of edges); a \textbf{pruning} step keeps the nodes/edges of largest influence, typically cutting nodes $10\times$ while losing $\sim$20\% of explained behavior. \textbf{Node influence} is computed from the unsigned, input-normalized adjacency matrix $A$ (indexed target$\leftarrow$source): the indirect-influence matrix sums all path strengths of all lengths,
+\[
+B \;=\; A + A^{2} + A^{3} + \cdots \;=\; (I-A)^{-1} - I,
+\]
+a \textbf{Neumann series}, finite because $A$ is a normalized DAG adjacency (spectral radius $<1$). A node's logit influence is the corresponding row of $B$ averaged over logit nodes. This single operator-inverse is the workhorse: ablation effects correlate with it (Spearman $\sim$0.72 for feature--feature influence) far better than with single-edge attribution. Hypotheses are validated by \textbf{constrained patching} --- perturbing a feature's decoding over a chosen layer range while suppressing knock-on effects inside the range, so the intervention isolates the edge the graph claims.
+
+\textbf{Global weights.} Beyond single prompts, the context-independent residual-direct interaction between features $s,t$ is the virtual weight $V_{st}=\big\langle \sum_{\ell\in L_{st}} W_{\text{dec}}^{s,\ell},\, W_{\text{enc}}^{t}\big\rangle$ (an inner product of one feature's accumulated decoders with another's encoder). Raw $V_{st}$ is dominated by \textbf{interference}: with millions of features sharing the stream, pairs that never co-fire still carry large spurious weights (exactly the metric-dependent Gram cross-talk of Part III, and the \textbf{interference weights} of \textcite{toy-model-of-interference-weights}). The fix is to fold in coactivation statistics --- \textbf{target-weighted expected residual attribution},
+\[
+V_{ij}^{\text{TWERA}} \;=\; \frac{\mathbb E[a_i a_j]}{\mathbb E[a_j]}\, V_{ij},
+\]
+which reweights by on-distribution co-firing and recovers interpretable connections. The authors are candid that TWERA "is not a perfect solution" and "does not handle inhibition well."
+
+\subsubsection*{On the Biology of a Large Language Model --- the application}
+
+\textcite{on-the-biology-of-a-large-language-model} runs the method on Claude 3.5 Haiku across nine case studies: two-hop reasoning (Dallas $\to$ Texas $\to$ Austin, with the intermediate "Texas" step manipulable), planning ahead in rhymed poetry, language-agnostic vs.\ language-specific multilingual circuits, parallel-heuristic addition (high- and low-precision paths and modular "lookup table" features that constructively interfere), medical-diagnosis chaining, an \textbf{inhibitory} "known-answer" circuit whose misfire produces hallucination, a finetuned-in "harmful request" feature, a jailbreak, chain-of-thought (un)faithfulness, and a hidden-goal audit. These are \textbf{existence proofs}: each shows the method \emph{can} surface a real, interventionally-confirmed mechanism. The honest headline number is that the graphs give "satisfying insight for about a quarter of the prompts" tried, and that even the success cases capture only a fraction of the model's computation, with error-node contributions present throughout. The addition case study also exhibits a clean piece of mathematics forced by the architecture: a feature whose pre-activation is affine in the operands obeys a \textbf{parallelogram constraint} (if active on $x+y$ and $z+w$ it is active on $x+w$ or $z+y$), so no single feature can compute a general "sum$=5$" detector in one step --- which is \emph{why} intermediate lookup-table features must exist.
+
+\subsubsection*{Tracing Attention Feature Interactions --- unfreezing QK, part 1}
+
+\textcite{tracing-attention-feature-interactions} attacks the frozen half. The premise is exactly the type signature of §1.4: the pre-softmax attention score is a \textbf{bilinear function} of the stream at the query and key positions, $\langle W_{QK}\,x_k,\, x_q\rangle$ (metric-free, a covector paired with a vector). Decomposing the stream into feature components $x_q=\sum_i a_i^{q} v_i + \cdots$, $x_k=\sum_j a_j^{k} v_j+\cdots$ and multiplying out gives the score as a sum of \textbf{feature--feature pairings}
+\[
+\langle W_{QK}\,x_k,\,x_q\rangle
+\;=\;
+\sum_{i,j} a_i^{q}\,a_j^{k}\,\big\langle W_{QK}\, v_j,\, v_i\big\rangle \;+\;(\text{bias, error}),
+\]
+each term a query-side feature times a key-side feature times their learned QK pairing. This is "QK attribution," and it is exactly the bilinear analogue of the linear OV attribution above. To say \emph{which} heads carry a given attribution-graph edge, the paper adds \textbf{head loadings}: forcing each cross-position edge through attention paths of \emph{length~1} (using residual-stream SAEs / weakly-causal crosscoders to "checkpoint" each layer, sidestepping the exponential explosion of multi-hop attention paths), the attention-mediated edge is $\sum_{h} a_s a_t\,(v_t^{*}\, O_h V_h\, v_s)\cdot \operatorname{attn}_h(p_s,p_t)$, a per-head decomposition. Applied to the induction prompt that defeated the methods paper ("\dots Aunt Sally\dots Aunt $\to$ Sally"), QK attribution recovers the mechanism the OV-only graph missed: query-side "Aunt/family-signifier" features pairing with key-side "name" and "this is the name of an aunt" features, validated by steering the key-side feature within the QK circuit.
+
+\subsubsection*{Progress on Attention --- unfreezing QK, part 2}
+
+\textcite{progress-on-attention} reports preliminary work on the harder, structural questions, and is explicitly lab-notes-grade. Three findings matter mathematically. (i) \textbf{Attention superposition}: forcing each feature onto a single head (rather than a learned linear combination of heads' patterns) costs $2$--$4\times$ on the $L_0$/MSE frontier, evidence that attention features are spread across heads just as residual features are spread across dimensions --- superposition recurs one level up. (ii) \textbf{Multi-Token Transcoders} (MTCs): a transcoder-like replacement for an \emph{attention} layer, where each feature carries a learned \textbf{head-loading vector} (a linear combination of the base heads' patterns, padded with identity to absorb MLP-like local computation); clustering features by head-loading gives semantically coherent families, and the OV dimensionality is a \emph{power-law continuum}, not the expected discrete split between rank-1 skip-trigrams and high-rank copying. The QK and OV conditions appear \textbf{coupled} (joint MTC training beats "move SAE features through heads"). (iii) \textbf{QK diagonalization}: route query and key through separate encoders, keep only same-index $\langle q_i,k_i\rangle$ interactions, sum and softmax to reconstruct the pattern. Rank-1 QK features struggle to match real patterns at low $L_0$, and --- tellingly --- a small $\mathcal O(1000)$ set of induction features does nearly all the work, with the rest dead or sign-cancelling, hinting that faithful QK modelling may need genuinely high-rank features.
+
+\subsection*{Common mathematical core}
+
+These papers share a tight kernel of objects, all inherited from earlier groups.
+
+\textbf{Local linearization (Taylor/Jacobian, exact-at-a-point).} The attribution graph is the Jacobian of the local replacement model with stop-gradients. Stop-gradient $=$ holding a nonlinearity's value fixed while zeroing its derivative; doing this on every frozen nonlinearity makes the pre-activation an \emph{exact} linear function of upstream activations \emph{at the prompt}, with the same error semantics as a first-order Taylor expansion: zero remainder at the base point, growing remainder away from it.
+
+\textbf{Frozen attention, from Group 1.} The OV/MLP attribution holds the QK pattern constant, reusing the primer's §1.4 move verbatim --- the exact-rewrite-in-content that Group~1 introduced for attention-only models, now generalized (as the methods paper notes the \emph{Framework} itself foresaw) to MLP-bearing models via transcoders.
+
+\textbf{The QK/OV split as the organizing axis.} The whole group is structured by §1.4's type distinction. $W_{OV}:V\to V$ is an endomorphism: the OV/MLP attributions are \emph{linear}, edges $a_s\,w_{s\to t}$. $W_{QK}:V\to V^{*}$ is a bilinear form: the QK attributions are \emph{quadratic}, terms $a_i^q a_j^k\langle W_{QK}v_j,v_i\rangle$. Linear vs.\ bilinear is exactly why the OV side yields a clean graph and the QK side a feature-\emph{pair} table.
+
+\textbf{Dictionary features, from Group 3.} Every node is a transcoder/CLT/SAE feature --- a learned overcomplete dictionary direction with a $\mathbb E\lVert\cdot\rVert^2+\lambda\rho$ objective (Part III.4). Group~4 is Group~3's dictionaries wired into a causal graph; the difference is the transcoder's predict-the-next-activation objective, which buys the linear bridge over the MLP.
+
+\textbf{Virtual weights and interference, from §1.3 and Group 2.} Graph edges \emph{are} virtual weights restricted to non-MLP linear paths; the global-weights interference and its TWERA correction are the §1.3 cross-talk and the Group-2 interference Gram matrix, now causal.
+
+\subsection*{How they diverge}
+
+\textbf{Method vs.\ frontier application.} \textcite{circuit-tracing-computational-graphs} is a methods paper with quantitative evaluation (replacement/completeness scores, faithfulness metrics) on a controlled 18-layer model plus Haiku; its claims are about the \emph{tool}. \textcite{on-the-biology-of-a-large-language-model} is a portfolio of \emph{phenomena} on a frontier model, with no completeness guarantees and explicit per-example scoping ("only claims about specific examples"). The mathematics is identical; the epistemic status is not --- and the rigour gradient of the corpus (Part V) is visible right here, between the two halves of one method.
+
+\textbf{Frozen QK vs.\ unfrozen QK.} The deeper fork is internal. \textcite{circuit-tracing-computational-graphs} and \textcite{on-the-biology-of-a-large-language-model} \emph{freeze} the QK form and attribute through OV/MLP, gaining exact linearity at the cost of never explaining attention. \textcite{tracing-attention-feature-interactions} and \textcite{progress-on-attention} \emph{unfreeze} it, gaining an account of attention at the cost of (a) leaving the linear regime for a bilinear one, and (b) trading the CLT's MLP-bridging linearity for SAE/crosscoder checkpoints that reintroduce nonlinear, prompt-local attributions through the MLP. The two halves cannot both have clean linear attribution \emph{and} explain attention; that tension is the live edge of the program.
+
+\subsection*{What they answer, and what they don't}
+
+What they answer: for a given prompt, \emph{which} features carry the model's computation along the OV/MLP paths, with intervention-validated influence. What they conspicuously do not:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=2pt]
+\item \textbf{Missing attention circuits.} With QK frozen, the graph explains \emph{that} information moved between positions but not \emph{why}. On induction and multiple-choice prompts this "misses the story" entirely --- the methods paper calls such graphs "essentially useless" there. The QK papers begin to fill this in but are preliminary.
+\item \textbf{Reconstruction-error "dark matter".} CLTs reconstruct only part of the MLP; the residual is dumped into \textbf{error nodes} that "pop out of nowhere," have no inputs, and are uninterpretable. On off-distribution prompts (e.g.\ obfuscated jailbreaks) error nodes dominate and the graph reveals little.
+\item \textbf{Mechanistic faithfulness.} Matching input--output behavior is not matching mechanism. One layer past a perturbation the two models agree well ($\sim$0.8 cosine), but discrepancies \textbf{compound across layers}, catastrophically for magnitudes --- the exact failure mode \textcite{toy-model-of-mechanistic-unfaithfulness} (Group~6) constructs in a toy setting and proposes Jacobian-matching to cure.
+\item \textbf{Inhibitory and inactive features.} Attribution is built for "what fired and pushed up"; the fact that a feature \emph{didn't} fire, and feature-to-feature \emph{inhibition}, are first-class mechanisms (the hallucination circuit is inhibitory) that attribution and TWERA "do not handle well."
+\item \textbf{The $\sim$25\% success rate.} On a frontier model the method yields satisfying insight on about a quarter of prompts, and even then on a fraction of the computation. This is an honest measurement, not a footnote.
+\end{itemize}
+
+\subsection*{Connections}
+
+\textbf{To Group 1.} This is the scaled-up exact rewrite. Group~1 froze attention and multiplied out an attention-only model exactly; Group~4 keeps the freeze, adds CLTs to clear the MLP, and adds error nodes to restore exactness \emph{on one prompt}. The QK papers literally return to Group~1's own recommended move --- study the QK circuit separately --- now with learned features instead of token bigrams.
+
+\textbf{To Group 3.} The nodes are Group~3 dictionaries; the transcoder is the SAE generalized from modelling representation to modelling computation, which is precisely the representation-vs-computation fork of Part IV.2. CLTs and crosscoders are the cross-layer dictionaries (\textcite{sparse-crosscoders-model-diffing}).
+
+\textbf{To Group 6.} "Mechanistic faithfulness" is Group~6's central worry made operational here; the compounding-error measurements are empirical evidence for \textcite{toy-model-of-mechanistic-unfaithfulness}'s claim that a low-error transcoder can implement the wrong algorithm.
+
+\textbf{To the three notions of "linear" (Part IV.3).} Group~4 is where all three collide in one pipeline. Frozen attention is \emph{exact} (notion 1). The attribution Jacobian is \emph{local linearization} (notion 2). The CLT itself is a \emph{learned sparse approximation} (notion 3), and possibly mechanistically unfaithful. The methods paper's own Taylor-expansion analogy names notion 2 explicitly; the danger the survey flags is that all three are routinely called "linear" while having different error semantics, and Group~4 stacks them.
+
+\subsection*{For the mathematician}
+
+\textbf{Error semantics: exact rewrite vs.\ local linearization.} Freezing attention (Group~1) replaces $X\mapsto W_{OV}X A(X)^{\top}$ by $X\mapsto W_{OV}X A_0^{\top}$ with $A_0=A(X_0)$: this is an \emph{exact} value at $X_0$ \emph{and} globally linear in the content factor --- no remainder, ever, as a function of content. Local linearization (the attribution Jacobian) is different: it is the first-order term of a Taylor expansion, exact \emph{only} at $X_0$, with remainder $O(\lVert\Delta X\rVert^2)$ that the compounding-faithfulness experiments show is not negligible across $\sim$18--40 layers. A mathematician should keep these strictly apart: one is a change of how a fixed map is \emph{written}, the other is a genuine approximation with a derivative-sized domain of validity.
+
+\textbf{The Neumann-series influence operator.} With $A$ the normalized unsigned adjacency of a DAG ($\rho(A)<1$), $B=(I-A)^{-1}-I=\sum_{k\ge1}A^k$ is the resolvent minus identity: entry $B_{ts}$ is the total weight of all directed paths $s\to t$, the path-strength generating function evaluated at $1$. This is the standard "total causal effect along all paths" object (cf.\ Katz / communicability), and it is what makes multi-hop influence tractable: a single linear solve replaces an exponential path sum. Its predictive edge over single-edge attribution (and the role of \emph{path length} via $B_\ell=\sum_{i\le\ell}A^i$) is empirically the main payoff of the cross-layer design.
+
+\textbf{The (gauge-)status of an attribution.} An attribution edge contracts a decoder vector, a stop-gradient Jacobian, and an encoder covector. The encoder--feature contraction $W_{\text{enc}}x$ is a metric-free pairing (a covector on the stream); the QK score $\langle W_{QK}x_k,x_q\rangle$ is metric-free too. But the \emph{decoder} side $\big(W_{\text{dec}}^{\,\cdot}\big)^{*}(\cdots)$ and the cosine/Gram comparisons used to cluster features into supernodes and to compute virtual weights $V_{st}=\langle\sum W_{\text{dec}},W_{\text{enc}}\rangle$ are metric-dependent (Part III.1): they silently insert $G=I$ on a stream the architecture declares basis-free (§1.3, Part I.4). So an individual edge built from encoder pairings is on firmer footing than the supernode groupings and raw global weights layered on top --- TWERA's reliance on \emph{data} coactivation statistics is, in effect, an empirical substitute for the missing canonical metric.
+
+\textbf{The combinatorial explosion of QK pairs, and its low-rank rescue.} OV/MLP attribution is \emph{linear}: $F$ features give $O(F)$ edges per target. QK attribution is \emph{bilinear}: the score expands into $O(F^2)$ query$\times$key feature pairs per head per position pair --- a genuine quadratic blow-up, which the methods paper names as the obstacle to "QK attribution." The structural reason there is any hope is that $W_{QK}=W_Q^{\top}W_K$ has rank $\le d_{\text{head}}\ll d_{\text{model}}$: the bilinear form factors through the low-dimensional head space, so the $F\times F$ pairing matrix $\langle W_{QK}v_j,v_i\rangle$ is itself low-rank, and the relevant interactions concentrate in a few directions. \textcite{progress-on-attention}'s QK diagonalization is exactly an attempt to exploit this --- approximate the form by a sum of (ideally rank-1) $\langle q_i,k_i\rangle$ feature interactions --- and its difficulty (rank-1 features underfit; a tiny induction-feature set dominates) is direct evidence that the effective rank, while $\ll d_{\text{model}}$, is not $1$. The honest open problem is a quantitative low-rank theory of $W_{QK}$ over the feature basis: how the $O(F^2)$ pairs collapse onto an $O(d_{\text{head}})$-dimensional core, complicated by attention superposition (\textcite{progress-on-attention}) spreading a single behavior's QK structure across several heads.
+
+
+\printbibliography
+\end{document}

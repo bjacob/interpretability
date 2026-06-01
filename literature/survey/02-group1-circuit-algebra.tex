@@ -1,0 +1,145 @@
+\input{preamble}
+\begin{document}
+
+\section*{Group 1 --- Algebraic circuit analysis}
+
+\begin{callout}
+\textbf{Where this sits.} This is a deep dive into Group~1 of the \emph{Landscape} survey (Part~II): the \emph{exact-rewrite} tradition. It assumes the \emph{ML~Concepts} primer's conventions --- residual stream, the QK bilinear form $W_{QK}:V\to V^{*}$ vs.\ the OV endomorphism $W_{OV}:V\to V$, adjoint $W^{*}$ vs.\ dual map $W^{\vee}$, the $GL(V)$ gauge of the stream --- and the four shared commitments of Part~I. Three papers: \textcite{framework} (the algebra), \textcite{induction-heads} (one circuit elevated to a theory of in-context learning), \textcite{interpretability-in-the-wild-ioi} (the same algebra used to reverse-engineer a real model, with validation criteria).
+\end{callout}
+
+\subsection*{The shared question}
+
+The thesis of this group is a single move repeated at three scales: \emph{rewrite the transformer's forward pass into exactly readable algebraic terms --- a path expansion built from the QK and OV circuits --- and then reverse-engineer concrete, named circuits from those terms.} The rewrite is not an approximation. With the attention pattern frozen (\emph{ML~Concepts} \S1.4), an attention-only transformer is an \emph{honestly linear} function of its input tokens, and the product of its layers expands into a sum over end-to-end \emph{paths}, each of which is a tractable composite of weight matrices that can be read directly off the parameters, without running the model. The three papers belong together because they share this commitment and differ only in \emph{what} they then rewrite-and-read: \textcite{framework} multiplies out toy attention-only models to exhaustion; \textcite{induction-heads} takes the one circuit that the rewrite reveals to require two layers --- the induction head --- and argues it is the mechanistic source of in-context learning across all model scales; \textcite{interpretability-in-the-wild-ioi} carries the same QK/OV vocabulary and causal-intervention bookkeeping into a real, MLP-bearing model (GPT-2 small) and supplies the field's first formal criteria for when a claimed circuit is \emph{correct}. Mathematically this is the most classical group in the corpus: tensor algebra over $V\otimes P$, low-rank factorisations, eigenstructure of fixed matrices, and the combinatorics of expanding a product into a sum.
+
+\subsection*{The papers}
+
+\subsubsection*{\textcite{framework} --- A Mathematical Framework for Transformer Circuits}
+
+\textbf{What it does.} It reframes the attention-only transformer so that every operation is either a known linear map or the single softmax nonlinearity, and then exploits that structure relentlessly. The keystone is the tensor factorisation of one head over the two factors of $V\otimes P$ (\emph{ML~Concepts} \S1.4): writing the residual stream of a whole layer as a matrix $X\in V\otimes P$ (feature factor $\otimes$ position factor),
+\[
+\operatorname{head}(X) \;=\; (A \otimes W_{OV})\,X, \qquad W_{OV} := W_O W_V : V\to V,
+\]
+with the attention pattern $A\in\operatorname{End}(P)$ acting on \emph{where} information moves and $W_{OV}$ on \emph{what} is moved. The pattern itself is a softmax of the QK bilinear form,
+\[
+A \;=\; \operatorname{rowsoftmax}\!\big(X^{*}\,W_{QK}\,X\big), \qquad W_{QK} := W_Q^{\vee}\,g_H\,W_K : V\to V^{*} \quad(\text{coordinates } W_Q^{\top}W_K),
+\]
+and $A$ is the head's \emph{only} nonlinear dependence on $X$.
+
+\textbf{Key mathematics --- the path expansion.} Because the stream is additive and read/written only by linear maps, a model is a \emph{product} of layer terms, and the product expands into a \emph{sum over paths}. A \textbf{0-layer} model is pure embedding-then-unembedding,
+\[
+T \;=\; W_U W_E,
+\]
+whose only content is bigram log-likelihoods. A \textbf{1-layer} attention-only model expands (using $\operatorname{Id}\otimes(\cdot)$ for the direct path and one term per head $h$) into
+\[
+\operatorname{logits}(t) \;=\; \big(\operatorname{Id}\otimes W_U W_E\big)\,t \;+\; \sum_{h}\Big(A^{h}\otimes \underbrace{W_U\,W_{OV}^{h}\,W_E}_{\text{OV circuit}}\Big)\,t,
+\qquad
+A^{h} = \operatorname{rowsoftmax}\!\Big(t^{\top}\,\underbrace{W_E^{\top}W_{QK}^{h}W_E}_{\text{QK circuit}}\,t\Big).
+\]
+The two named objects are honest $n_{\mathrm{vocab}}\times n_{\mathrm{vocab}}$ token-to-token matrices, both of rank $\le d_{\mathrm{head}}$: the \textbf{QK circuit} $W_E^{\top}W_{QK}^{h}W_E$ scores how much a query token wants to attend to a key token, and the \textbf{OV circuit} $W_U W_{OV}^{h}W_E$ records how an attended token shifts the output logits. Reading large entries off these matrices recovers \textbf{skip-trigrams} of the form \texttt{[source]\dots[destination][out]} --- the model is revealed to be an ensemble of a bigram table and a pile of factored skip-trigram tables. (The factoring $f(a,b,c)=f_1(a,b)\,f_2(a,c)$ across QK and OV is genuinely lossy: a head boosting both \texttt{keep\dots in mind} and \texttt{keep\dots at bay} must also boost \texttt{keep\dots in bay} --- a documented ``skip-trigram bug''.)
+
+\textbf{OV-eigenvalue ``copying''.} For the endomorphism $M = W_U W_{OV}^{h}W_E$ read in the token basis, an eigenpair $Mv=\lambda v$ with $\lambda>0$ real means a combination of tokens that, when attended to, \emph{raises its own} logits --- the signature of a \textbf{copying head}. A random (Ginibre-like) matrix has symmetric $\pm$ eigenvalues; an excess of positive real eigenvalues is therefore evidence of copying. The paper is candid that this is a heuristic summary statistic, not a definition: eigenvectors need not be orthogonal, so positive spectrum is ``copying on average'' rather than a theorem (the link $\sum_i\lambda_i = \operatorname{tr} M = \sum_i M_{ii}$ ties it to the more direct ``diagonal is positive'' test).
+
+\textbf{Two layers: composition.} The new phenomenon at depth two is \textbf{head composition} through the stream, in three flavours by which read map of a later head ingests an earlier head's write subspace: \textbf{Q-}, \textbf{K-}, and \textbf{V-composition}. V-composition produces \textbf{virtual attention heads}: by the mixed-product property,
+\[
+(A^{h_2}\otimes W_{OV}^{h_2})\,(A^{h_1}\otimes W_{OV}^{h_1}) \;=\; (A^{h_2}A^{h_1})\otimes(W_{OV}^{h_2}W_{OV}^{h_1}),
+\]
+an object that is \emph{itself} a head, with composed pattern and composed OV. Q-/K-composition instead enrich the \emph{attention scores}: the second-layer QK circuit acts on $x_1$ (post-layer-1 stream), so its path expansion is a $(4,2)$-tensor, a sum of terms $A_q\otimes A_k\otimes W$ with $x\,(A_q\otimes A_k\otimes W)\,y = A_q^{\top}\,x\,W\,y\,A_k$ --- $A_q$ moving query-side information, $A_k$ key-side, $W$ pairing them into a score. The \textbf{induction head} is the minimal use of K-composition: composing a previous-token head's pattern $A^{h_{-1}}$ into the key side gives a term
+\[
+\operatorname{Id}\otimes A^{h_{-1}}\otimes W,
+\]
+where $W$ has positive eigenvalues (a QK ``same-matching'' matrix). This makes the head attend to the token \emph{following} a previous copy of the current token, implementing $[A][B]\dots[A]\to[B]$.
+
+\textbf{Method \& headline result.} Hand-reverse-engineering of trained 1- and 2-layer attention-only ``toy'' transformers, validated by reading expanded weights, eigenvalue histograms, Frobenius-norm composition scores, and order-$n$ V-composition ablations. Headline: small attention-only models can be understood ``in the same sense one understands a giant linear regression'' --- the algorithmic mystery is gone --- and induction heads (a 2-layer-only construction) are the qualitative leap that depth buys.
+
+\subsubsection*{\textcite{induction-heads} --- In-Context Learning and Induction Heads}
+
+\textbf{What it does.} It promotes the single circuit above to a candidate \emph{universal} mechanism. It defines an induction head purely behaviourally, by two measurable properties on a repeated random-token sequence: \textbf{prefix matching} (the head attends back to tokens preceded by the current token) and \textbf{copying} (its output raises the logit of the attended token). This behavioural definition is deliberately model-agnostic, so it survives into large MLP-bearing models where the parameter-level rewrite of \textcite{framework} no longer closes.
+
+\textbf{Key mathematics.} The mechanistic core is inherited verbatim: copying is the positive-eigenvalue OV circuit, prefix matching is the $\operatorname{Id}\otimes A^{h_{-1}}\otimes W$ K-composition term. The generalisation claim is the \textbf{fuzzy} rule
+\[
+[A^{*}][B^{*}]\;\dots\;[A]\ \to\ [B], \qquad A^{*}\approx A,\ B^{*}\approx B \ \text{(close in some representation)},
+\]
+of which literal copying is the special case $A^{*}=A$. The one new architectural object is the \textbf{smeared-key} model, a minimal modification letting any depth express the previous-token shift via a learned interpolation per head,
+\[
+k^{h}_{j} \;=\; \sigma(\alpha^{h})\,k^{h}_{j} \;+\; \big(1-\sigma(\alpha^{h})\big)\,k^{h}_{j-1},
+\qquad \sigma(\alpha^{h})\in[0,1].
+\]
+In-context learning is measured operationally as a \emph{loss gap}: (loss at token~50) $-$ (loss at token~500), averaged over the corpus.
+
+\textbf{Method.} An indirect, ``neuroscience-style'' case across 34 transformers (up to $\sim$13B parameters) and $>$50{,}000 head ablations, organised as six converging arguments: macroscopic co-occurrence of a training-time \textbf{phase change} (a visible non-convex bump in the loss) with induction-head formation and the jump in in-context learning; co-perturbation (the smeared-key change moves both together, and makes 1-layer models learn in context); direct ablation (knocking out induction heads removes nearly all in-context learning in small models); examples of generality (the \emph{same} head doing translation and pattern-matching while still passing the literal-copying test); mechanistic plausibility; and smooth continuity from small to large models.
+
+\textbf{Headline result.} A roughly constant $\sim$0.4 nats of in-context learning appears abruptly in a narrow early window ($\sim$2.5--5B tokens) for every model with $\ge 2$ layers, exactly when induction heads form --- causal in small models, correlational in large ones --- supporting the (hedged) thesis that induction heads drive the majority of in-context learning.
+
+\subsubsection*{\textcite{interpretability-in-the-wild-ioi} --- A Circuit for Indirect Object Identification in GPT-2 small}
+
+\textbf{What it does.} It carries the QK/OV vocabulary into a real 12-layer, MLP-bearing model and reverse-engineers a behaviour ``in the wild'': completing ``When Mary and John went to the store, John gave a drink to'' with ``Mary''. The human-level algorithm --- list the names, drop the duplicated one, output the rest --- is realised by a circuit of \textbf{26 attention heads in 7 classes}: Name Mover, (Negative Name Mover), S-Inhibition, Duplicate Token, Induction, Previous Token, and Backup Name Mover heads, communicating by reading and writing residual-stream subspaces (including, notably, by \emph{pointers} --- writing a token's \emph{position} rather than its content).
+
+\textbf{Key mathematics.} Each head is the same $(W_{QK}^{i,j}, W_{OV}^{i,j})$ pair, with $W_{OV}=W_O W_V$ and (coordinates) $W_{QK}=W_Q (W_K)^{\top}$. A head is classified by two read-offs: an \textbf{attention pattern} $A_{i,j}\in\mathbb{R}^{N\times N}$ and a copy/logit signature. For a candidate Name Mover, one scatters attention probability against the direct logit contribution $\langle h_i(X),\,W_U[N]\rangle$ (how much head $h_i$ writes toward name $N$'s unembedding) and finds correlation $\rho>0.81$; a \textbf{copy score} (run the head's OV on a name's residual vector, unembed, check the name lands in the top-5 logits) exceeds 95\% for Name Movers vs.\ $<$20\% for an average head. Negative Name Movers have the mirror signature: copy score $\sim$98\% computed with $-W_{OV}$, i.e.\ they write \emph{against} the correct answer (a ``hedging'' role).
+
+\textbf{Path patching} is the workhorse intervention and is the causal refinement of \textcite{framework}'s path expansion. Given a clean input $x_{\mathrm{orig}}\sim\mathsf{p}_{\mathrm{IOI}}$ and a counterfactual $x_{\mathrm{new}}\sim\mathsf{p}_{\mathrm{ABC}}$ (three random names, same grammar), one re-runs $x_{\mathrm{orig}}$ but feeds head $h$'s output from $x_{\mathrm{new}}$ along a chosen set of paths $\mathcal{P}$ (direct paths through residual connections and MLPs, but not through other attention heads), measuring the change in \emph{logit difference} $\operatorname{logit}(\mathrm{IO})-\operatorname{logit}(\mathrm{S})$. This isolates the \emph{direct} effect of $h\to R$ from effects mediated by other heads, and is how the circuit is traced backward from the logits: Name Movers directly move the logits; S-Inhibition heads write into Name Movers' \emph{queries}; Duplicate-Token and Induction heads feed S-Inhibition \emph{values}; Previous-Token heads feed the Induction heads' keys via K-composition.
+
+\textbf{Validation criteria.} The lasting formal contribution is three criteria for a circuit $C\subseteq M$, all phrased through $F(C):=\mathbb{E}_{X\sim\mathsf{p}_{\mathrm{IOI}}}\big[f(C(X);X)\big]$, the expected logit difference when everything outside $C$ is (mean-)ablated:
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Faithfulness:} $|F(M)-F(C)|$ small ($C$ reproduces $M$'s behaviour); here $13\%$ of $F(M)$, so $C$ achieves $87\%$.
+\item \textbf{Completeness:} for every $K\subseteq C$, the \emph{incompleteness score} $|F(C\setminus K)-F(M\setminus K)|$ small ($C$ and $M$ stay matched \emph{under knockouts}, not just at baseline).
+\item \textbf{Minimality:} for every node $v\in C$ there is a $K\subseteq C\setminus\{v\}$ with $|F(C\setminus(K\cup\{v\}))-F(C\setminus K)|$ large (no redundant node).
+\end{itemize}
+
+\textbf{Method \& headline result.} Iterative path-patching discovery plus per-head attention/copy analysis on GPT-2 small, with mean-ablation over $\mathsf{p}_{\mathrm{ABC}}$, and a downstream test (hand-built adversarial duplicated-name sentences flip the prediction 23\% of the time). Headline: the largest end-to-end reverse-engineering of a natural behaviour in a real LM at the time --- but it \emph{fails} the hardest validation, as a greedy search finds knockout sets with incompleteness up to 87\% of $F(M)$, and ablating all Name Movers reveals \textbf{Backup Name Movers} silently taking over (a $\le$5\% drop).
+
+\subsection*{Common mathematical core}
+
+Strip the three papers to their shared skeleton and you get the exact algebra of a \textbf{frozen-attention linear model}, tied directly to Part~I and Part~III of the \emph{Landscape}.
+
+\emph{Exact rewrite via the residual stream (Part~I.3).} The stream is additive and gauge-symmetric, so the forward pass telescopes into a sum of per-block contributions, and once each head's $A$ is frozen the whole attention-only model is a single linear operator on $V\otimes P$. ``Multiply out the product of layers, then break it into a sum over paths'' is the one technique underlying all three: the path expansion of \textcite{framework}, the head-by-head decomposition of in-context learning in \textcite{induction-heads} (in attention-only models the loss gap is literally a sum over head contributions plus a position-independent direct path), and the path-patching graph of \textcite{interpretability-in-the-wild-ioi}.
+
+\emph{QK/OV as the universal coordinate system (Part~III.3).} Every component is read in the same two objects: the bilinear form $W_{QK}:V\to V^{*}$ governing \emph{where} (it lands in the dual --- hence the lone transpose in $W_Q^{\top}W_K$ --- and feeds the softmax) and the endomorphism $W_{OV}:V\to V$ governing \emph{what} (no transpose; its image is the head's write subspace, its eigenstructure diagnoses copying). Induction = positive-eigenvalue OV $+$ K-composed QK; IOI's Name Movers = high-copy-score OV; its S-Inhibition heads act on Name Movers' QK input. The same two matrices, five times over.
+
+\emph{Virtual weights (Part~I, \emph{ML~Concepts} \S1.3).} Because the identity carries each write forward untouched, the channel from an earlier writer $A$ to a later reader $B$ is the metric-free composite $W_{\mathrm{in}}^{B}W_{\mathrm{out}}^{A}$, computable from weights alone with no input. K-composition is exactly $W_K^{\mathrm{ind}}W_O^{\mathrm{prev}}\neq 0$; \textcite{framework} scores composition by the Frobenius norm of such products. This is the gauge-invariant ``do they interact?'' relation (image-in-kernel), the constructive flip side of Part~III.2.
+
+\emph{Causal interventions as the empirical complement.} Where the rewrite is exact (attention-only) the algebra suffices; where it is not (MLPs, large models) the group falls back on ablations and patching --- zero/mean ablation, path patching, order-$n$ V-composition ablation --- to \emph{measure} the contribution of a term that the algebra can only name. Mean ablation over a matched distribution ($\mathsf{p}_{\mathrm{ABC}}$, or per-template means) is the recurring trick for removing task information while preserving constant bias.
+
+\subsection*{How they diverge}
+
+The three papers occupy different points on a single axis: \textbf{how much of the model the rewrite can still reach}.
+
+\textcite{framework} lives in the regime where the rewrite is \emph{total}: attention-only, frozen $A$, every parameter contextualised into skip-trigram tables read straight from the weights. ``Understanding'' here is parameter-level and a-priori --- you never need to run the model. This is the cleanest mathematics in the corpus and also the most limited in scope: it explicitly excludes MLPs, ``the major weakness of our work''.
+
+\textcite{induction-heads} keeps the \emph{mechanism} from the exact regime but abandons the exact \emph{method}: in 13B-parameter MLP models you cannot multiply out the weights, so the induction head is redefined \emph{behaviourally} (prefix-matching $+$ copying scores on random sequences) and the evidence becomes interventional and correlational --- phase-change co-occurrence, smeared-key perturbation, ablation. It trades algebraic certainty for cross-scale reach, and is explicit that the case weakens monotonically as models grow.
+
+\textcite{interpretability-in-the-wild-ioi} sits furthest from the exact regime: a real model, MLPs left uninterpreted (and partly load-bearing --- knocking out all post-layer-1 MLPs breaks the task), and discovery driven by \emph{causal interventions} (path patching) rather than weight multiplication. The QK/OV vocabulary survives, but as a \emph{classification scheme} for heads found behaviourally, not as a closed-form rewrite. Where \textcite{framework} reads a circuit off the weights, IOI must \emph{hunt} for it and then \emph{validate} it --- which is why IOI, not the toy papers, is where the question ``is this circuit even correct?'' first gets formalised.
+
+The role of \textbf{MLPs} is the cleanest single divergence: ignored by fiat in \textcite{framework}, suspected confound in \textcite{induction-heads} (head ablations no longer cleanly sum once MLPs intervene), and an admitted gap in IOI (un-interpreted yet necessary). The exact rewrite freezes a softmax; it has no comparable move for a pointwise nonlinearity on a privileged neuron basis. That gap is the cue for Group~3.
+
+\subsection*{What they answer, and what they don't}
+
+\textbf{What they answer.} For attention-only models the answer is essentially complete and exact: a 0-layer model \emph{is} a bigram table $W_U W_E$; a 1-layer model \emph{is} a bigram table plus factored skip-trigrams readable from $W_U W_{OV}W_E$ and $W_E^{\top}W_{QK}W_E$; a 2-layer model adds composition, and the qualitatively new circuit it buys is the induction head, which is also (with strong causal evidence in the small case) the engine of in-context learning. For a real model, IOI shows that a natural behaviour \emph{can} be localised to a sparse, named, causally-validated subgraph and stress-tested.
+
+\textbf{What they don't.} Three honest limits, all acknowledged in the papers.
+\emph{(1) MLPs resist the rewrite.} The frozen-attention trick has no analogue for the pointwise nonlinearity; two-thirds of a real transformer's parameters --- and many attention$\leftrightarrow$MLP interactions --- lie outside the method.
+\emph{(2) Completeness can fail even when faithfulness holds.} The Backup Name Movers are the object lesson: a circuit can reproduce $87\%$ of behaviour yet hide redundant machinery that surfaces only under ablation, and IOI's own greedy search finds knockout sets with $87\%$ incompleteness. Dropout-induced redundancy means the ``circuit'' is not unique. Faithfulness (matching the function) is strictly weaker than completeness (matching it under intervention) --- a foretaste of Group~6's mechanistic-faithfulness worry.
+\emph{(3) ``Understanding'' is deflationary for the cases that are solved.} \textcite{framework} is explicit that fully understanding a 1-layer model is understanding it ``in the same sense one understands a giant linear regression'': the algorithmic mystery is gone, but $\sim$2.5 billion expanded OV entries remain, with no agreed summary statistic (even ``copying'' is only heuristically formalised by positive eigenvalues). Exactness has been achieved; \emph{intelligibility} has only been relocated.
+
+\subsection*{Connections}
+
+\emph{To Group~3 (MLPs $\to$ SAEs).} The wound this group leaves open --- MLPs do not freeze --- is precisely Group~3's starting point. Where Group~1 cannot rewrite the nonlinearity exactly, dictionary learning \emph{recovers} an interpretable feature frame from the MLP's activations instead. The hand-off is literal: \textcite{framework} names the gap, \textcite{towards-monosemanticity} fills it for a one-layer model's MLP.
+
+\emph{To Group~4 (scaling the rewrite $\to$ attribution graphs).} Group~4 is Group~1 with ``exact'' replaced by ``locally linear''. \textcite{circuit-tracing-computational-graphs} swaps each MLP for a transcoder, freezes attention and norm denominators, and reads off a linear \emph{attribution graph} --- the path expansion of \textcite{framework} made approximate and automatic, with node influence the Neumann series $(I-A)^{-1}-I$. Path patching (IOI) is the direct ancestor of attribution patching. The QK form that Group~1 freezes is exactly what \textcite{tracing-attention-feature-interactions} and \textcite{progress-on-attention} go back to decompose. IOI's faithfulness/completeness criteria become Group~4 and Group~6's central currency.
+
+\emph{To the gauge/metric theme (Part~III).} This group is, quietly, the corpus's best illustration that the \emph{right} invariants are metric-free. Its load-bearing quantities --- virtual weights $W_{\mathrm{in}}^{B}W_{\mathrm{out}}^{A}$, the QK pairing $\langle W_{QK}x_k,x_q\rangle$, the OV endomorphism's spectrum, the direct-logit pairing $\langle h_i(X),W_U[N]\rangle$ --- are built only from the model's own maps and the natural dual pairing, hence gauge-invariant under the $GL(V)$ symmetry of the stream. The metric sneaks in only at the margins (Frobenius-norm composition scores, ``copy score'' thresholds, the un-normalised QK scores), exactly the places the papers themselves flag as not-quite-principled.
+
+\subsection*{For the mathematician}
+
+\textbf{Where the genuine mathematics is.}
+\begin{itemize}[leftmargin=1.4em]
+\item \emph{Tensor algebra over $V\otimes P$.} The whole framework is the observation that a head is a simple tensor $A\otimes W_{OV}$ on a two-factor space, that products of such tensors factor across the factors (the mixed-product property gives virtual heads), and that the second-layer QK score is a $(4,2)$-tensor $A_q\otimes A_k\otimes W$. The path expansion is the distributive law on this algebra; the combinatorial growth of paths (linear in layers for real heads, quadratic/cubic for virtual heads) is a clean enumeration problem with a real interpretive payoff (which higher-order terms can be safely dropped?).
+\item \emph{Eigen/singular structure of $W_{OV}$.} ``Copying'' as positive real spectrum of an endomorphism read in a distinguished (token) basis is a genuinely interesting and \emph{imperfect} invariant: the SVD $USV=W_{OV}$ separates read- and write-subspaces, but the eigenbasis is non-orthogonal, so $\operatorname{tr}=\sum\lambda_i=\sum M_{ii}$ links three inequivalent ``copying'' notions without a canonical one. A clean theorem characterising ``copying matrices'' (and its fuzzy/analogical generalisation) is genuinely open.
+\item \emph{The non-canonical normalisation of QK scores.} \textcite{framework} flags that QK entries ``aren't comparable between different query vectors, and there isn't a clear right answer as to how to normalize them'': the softmax is invariant under adding any $y$-independent constant to a row of scores, so the bilinear form $W_{QK}$ is only defined up to a rank-one $\mathbf{1}$-coset per query --- an affine, not linear, ambiguity that no paper resolves cleanly.
+\item \emph{Combinatorics of path expansion and circuit validation.} Completeness quantifies over all $2^{|C|}$ subsets $K\subseteq C$; IOI can only sample (uniform / by-class / greedy), and the greedy adversary breaks the circuit. This is a search/optimisation problem with adversarial structure --- and a precise statement of why ``faithful'' $\not\Rightarrow$ ``complete''.
+\end{itemize}
+
+\textbf{Group-specific blind spots.} The exactness is real but narrow, and the narrowness is structural, not incidental. (i)~The rewrite is exact only with \emph{attention frozen} and \emph{per input}: the genuinely nonlinear, harder half of attention --- \emph{why} a head attends where it does (the derivative of $A$ through QK) --- is discarded, and the frozen model is valid only on the input it was frozen on. (ii)~The pointwise MLP nonlinearity admits no analogue of freezing, so the method's reach is capped at $\lesssim 1/3$ of parameters. (iii)~The ``definitions'' that do the interpretive work --- copying via positive eigenvalues, the behavioural induction-head test, faithfulness/completeness/minimality --- are explicitly heuristic, distribution-dependent (the validation metrics are all stated through a particular $\mathsf{p}_{\mathrm{IOI}}$), and metric-laden where they touch norms. (iv)~Redundancy (Backup heads, dropout) means a ``circuit'' is not a well-defined object: there is no canonical minimal subgraph, only one that passes a sampled test. For a mathematician, the group is best read as a worked existence proof that \emph{some} trained networks can be rewritten into exactly-true algebra --- together with a precise inventory of where that proof stops.
+
+
+\printbibliography
+\end{document}

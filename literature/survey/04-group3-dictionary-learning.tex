@@ -1,0 +1,142 @@
+\input{preamble}
+\begin{document}
+
+\section*{Group 3 --- Dictionary learning (Sparse Autoencoders)}
+
+\begin{callout}
+\textbf{Where this sits.} This is the inverse half of the superposition story. Group 2 (the \emph{Landscape} survey, Part II) asks the \emph{forward} question --- given a set of sparse features and a budget of $d=\dim V$ dimensions, what packing does training choose? Group 3 asks the \emph{inverse}: handed only the activations a trained model actually produces, can we \textbf{recover} the overcomplete feature frame that generated them? The mathematical genre is \textbf{overcomplete dictionary learning / sparse coding}; the recurring anxiety, stated by the authors themselves, is that there is \textbf{no ground-truth objective} for what a "feature" is, so the recovery is optimised against a proxy. All four papers are from the Anthropic / Transformer Circuits lineage. Conventions (feature $=$ direction; dictionary map $D:\mathbb{R}^F\to V$; encoder/decoder; $GL(V)$ gauge; adjoint $W^{*}$ vs.\ dual $W^{\vee}$) are those of the \emph{ML~Concepts} primer.
+\end{callout}
+
+\subsection*{The shared question}
+
+Fix an activation site inside a transformer --- an MLP's neuron vector, or (later) the residual stream $V=\mathbb{R}^{d}$. Feed the model a large corpus; collect the cloud of activation vectors $\{x^{j}\}\subset V$ it produces. The \textbf{Linear Representation Hypothesis} (the \emph{Landscape} survey, Part I.1) asserts that each such vector is a \emph{sparse} linear combination of a fixed family of \textbf{feature directions} $\{d_i\}_{i=1}^{F}$,
+\[
+x^{j}\;\approx\;b+\sum_{i=1}^{F} f_i(x^{j})\,d_i,\qquad f_i(x^{j})\ge 0,\ \ \#\{i:f_i\neq 0\}\ \text{small},
+\]
+with $F\gg d$ (overcomplete) because superposition lets the model traffic in far more features than dimensions (Part I.2). Collecting the directions into a \textbf{dictionary map} $D:\mathbb{R}^{F}\to V$, $D e_i=d_i$, this is $x\approx b+Df(x)$: a linear matrix factorisation in which $D$ is a fat, non-injective matrix and $f(x)$ is a sparse code.
+
+The \textbf{shared question} of this group is the \emph{inverse problem} this poses. The model never hands you $D$ or $f$; it hands you only the vectors $x^{j}$. Recovering the pair $(D,f)$ from $\{x^{j}\}$ alone --- with $D$ overcomplete and $f$ required sparse --- is exactly classical \textbf{sparse dictionary learning} (Olshausen--Field, $k$-SVD). Two strategies for getting interpretable units divide the group:
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{Post-hoc recovery.} Leave the trained model untouched and \emph{learn} $D$ from its activations with a sparse autoencoder (SAE) --- the dominant line: \textcite{towards-monosemanticity}, \textcite{scaling-monosemanticity}, and (across layers/models) \textcite{sparse-crosscoders-model-diffing}.
+\item \textbf{Architectural alignment.} Change the architecture so that features align to the privileged neuron basis \emph{in the first place}, making the dictionary trivially the identity --- \textcite{softmax-linear-units}.
+\end{enumerate}
+
+They belong together because they answer the same recovery question under the same superposition hypothesis, share the same Lagrangian (reconstruction $+$ sparsity), and lean on the same near-orthogonality of the recovered frame. They diverge on \emph{when} you intervene (after training vs.\ during) and on \emph{what} the dictionary spans (one site vs.\ many layers vs.\ two models).
+
+\subsection*{The papers}
+
+\subsubsection*{Towards Monosemanticity (the existence proof)}
+
+\textcite{towards-monosemanticity} is the foundational demonstration. The target is deliberately minimal: a one-layer transformer with a $512$-neuron ReLU MLP --- "the simplest language model we profoundly don't understand," because the MLP nonlinearity is exactly what \textcite{framework}'s exact-rewrite program (Group 1) cannot freeze. They decompose the MLP activation $x\in V=\mathbb{R}^{512}$ as in (1) and fit it with a \textbf{sparse autoencoder}: a wide, shallow autoencoder whose hidden layer is the sparse code. Writing the encoder/decoder explicitly,
+\[
+f(x)=\operatorname{ReLU}\!\big(W_{e}(x-b_{d})+b_{e}\big),\qquad
+\hat x = b_{d}+W_{d}\,f(x),
+\]
+with the columns of $W_{d}$ the (unit-norm) feature directions $d_i$ and the input/output biases \emph{tied} (subtract a fixed $b_d$, reconstruct it back). It is trained by Adam to minimise reconstruction error plus an $\ell_1$ sparsity penalty:
+\[
+\mathcal{L}=\mathbb{E}_{x}\Big[\,\lVert x-\hat x\rVert_{2}^{2}\;+\;\lambda\sum_i f_i(x)\,\big\rVert d_i\big\rVert\,\Big].
+\]
+The autoencoder is \textbf{overcomplete}: $F$ ranges from $1\times$ ($512$ features) to $256\times$ ($131{,}072$), with detailed analysis of the run "A/1" at $F=4096$. Two empirical regularities are named here and recur throughout the group. \textbf{Dead features}: some hidden units cease to fire on any input, wasting dictionary capacity; they are revived by \emph{resampling} (reinitialising a dead unit toward a poorly-reconstructed datapoint). \textbf{Feature splitting}: as $F$ grows, one coarse feature resolves into several finer ones (a single base64 feature splits into three), so there is \emph{no canonical feature count} --- the dictionary width is a resolution knob, not a fact about the model.
+
+Two arguments in this paper are load-bearing for the whole group. First, the \textbf{recovery is non-trivial}: computing $f(x)$ from $x$ given $D$ asks to invert a fat ($d\times F$, $F\gg d$) matrix --- impossible \emph{except} that $f$ is sparse, which is precisely \textbf{compressed sensing} (NP-hard exactly; here approximated by a single amortised ReLU encoder rather than an iterative solver, deliberately, so the SAE is "no stronger" at recovery than the MLP that produced the activations). Second, a sharp argument against the architectural route (taken up by SoLU): under \textbf{cross-entropy} loss a model often achieves lower loss with a \emph{polysemantic} neuron than a monosemantic one, so merely forcing activation sparsity does not buy monosemanticity. Tellingly, the SAE itself is fit under \textbf{MSE}, under which the monosemantic and polysemantic optima can coincide --- which is why sparsity \emph{can} discourage superposition inside the learned dictionary even though it cannot in the host model. The paper closes on the group's defining unease: "are models in some fundamental sense composed of features, or are features just a convenient post-hoc description?" --- left explicitly open.
+
+\subsubsection*{Scaling Monosemanticity (the same recipe at frontier scale)}
+
+\textcite{scaling-monosemanticity} carries the identical recipe to Claude 3 Sonnet, a production model, and to the \textbf{residual stream} (middle layer) rather than an MLP. Activations are first scalar-normalised so their mean squared $\ell_2$ norm equals $D=\dim V$; then $x\in\mathbb{R}^{D}$ is decomposed as
+\[
+\hat x = b^{dec}+\sum_{i=1}^{F} f_i(x)\,W^{dec}_{\cdot,i},\qquad
+f_i(x)=\operatorname{ReLU}\!\big(W^{enc}_{i,\cdot}\!\cdot x + b^{enc}_i\big),
+\]
+trained against the \textbf{decoder-norm-weighted} $\ell_1$ objective
+\[
+\mathcal{L}=\mathbb{E}_{x}\Big[\,\lVert x-\hat x\rVert_{2}^{2}\;+\;\lambda\sum_i f_i(x)\,\lVert W^{dec}_{\cdot,i}\rVert_{2}\,\Big].
+\]
+The factor $\lVert W^{dec}_{\cdot,i}\rVert_2$ is not cosmetic: it lets the unit-normalised columns be read as feature \emph{directions} and the products $f_i\lVert W^{dec}_{\cdot,i}\rVert_2$ as feature \emph{activations}, and it blocks the degenerate "cheat" of shrinking $f_i$ while inflating $\lVert d_i\rVert$ to evade the penalty at fixed reconstruction. Three SAEs were trained at $F\approx 1\mathrm{M},\,4\mathrm{M},\,34\mathrm{M}$ features ($\lambda=5$). Because the loss is "a standard ML problem," they fit \textbf{scaling laws} (compute $\propto F\times\#\text{steps}$) to choose the $34\mathrm{M}$ run's training length --- treating dictionary recovery as an ordinary optimisation target.
+
+The mathematically suggestive result is the \textbf{concept-frequency law}. For families of concepts (elements, cities, animals, foods) the probability that the dictionary contains a dedicated feature for a concept rises with that concept's frequency in the training data; rescaling the frequency axis by the number of \emph{alive} features collapses the three runs onto one curve "resembling a \textbf{sigmoid in log-frequency space}," with the $50\%$-inclusion threshold near the inverse of the alive-feature count and a conjectured tie to \textbf{Zipf's law} (the millionth feature represents a concept $\sim\!10\times$ rarer than the hundred-thousandth). \textbf{Dead features} scale adversely: $\approx 2\%$, $35\%$, $65\%$ dead at $1\mathrm{M}/4\mathrm{M}/34\mathrm{M}$ --- the bigger the dictionary, the more capacity wasted. The discussion is candid about the limits: an "\textbf{Inability to Evaluate}" (no principled objective; the MSE/$\ell_1$ trade-off is admitted unprincipled), and \textbf{cross-layer superposition} --- features "smeared" across layers that no single-site SAE can cleanly isolate, motivating crosscoders.
+
+\subsubsection*{Softmax Linear Units (the architectural alternative)}
+
+\textcite{softmax-linear-units} takes the other fork: rather than \emph{recover} a dictionary post-hoc, \emph{redesign} the MLP so features align to neurons during training, making the privileged neuron basis (the \emph{ML~Concepts} primer §1.5) the dictionary. The device is the \textbf{softmax linear unit}, a drop-in replacement for the GeLU activation (recall $\operatorname{GeLU}(x)\approx\operatorname{sigmoid}(1.7x)\odot x$; replace the binary sigmoid by its multivariate sibling softmax):
+\[
+\operatorname{SoLU}(x)\;=\;x\odot\operatorname{softmax}(x).
+\]
+Acting on a whole neuron vector, softmax implements \textbf{lateral inhibition}: a large coordinate suppresses its neighbours, e.g.\ $\operatorname{SoLU}(4,1,4,1)\approx(2,0,2,0)$, encouraging few-hot activations. The deeper rationale is \textbf{superlinearity}: like $\operatorname{ReLU}(x)^2$ or $\exp(x)$, SoLU satisfies $f(x/\sqrt{N})<f(x)/\sqrt{N}$, so \emph{spreading} a feature across $N$ neurons shrinks it --- a built-in penalty on superposition that favours basis-aligned features. Empirically this raises the fraction of "interpretable" neurons from $\sim\!35\%$ to $\sim\!60\%$ at no measured loss cost.
+
+The mathematics of the catch --- the "\textbf{no free lunch}" --- is the most interesting part for this survey. Bare SoLU costs performance (as superposition predicts it must), so a \textbf{LayerNorm} is appended: $f(x)=\operatorname{LN}(\operatorname{SoLU}(x))=\operatorname{LN}(x\odot\operatorname{softmax}(x))$. But LayerNorm is invariant to input scaling, $\operatorname{LN}(\alpha x)=\operatorname{LN}(x)$, so the softmax \emph{denominator cancels}:
+\[
+\operatorname{LN}\!\big(\operatorname{SoLU}(x)\big)\;=\;\operatorname{LN}\!\Big(x\,\tfrac{\exp(x)}{\sum_i\exp(x_i)}\Big)\;=\;\operatorname{LN}\!\big(x\odot\exp(x)\big).
+\]
+A feature that SoLU suppressed by spreading it thin is rescaled back up by the normaliser --- superposition is \textbf{smuggled through} in small activations and recovered downstream. So the architecture makes some features visible by hiding others more deeply. The authors read this as \emph{evidence for} the superposition hypothesis: you cannot cheaply legislate it away.
+
+\subsubsection*{Sparse Crosscoders (one dictionary across layers and models)}
+
+\textcite{sparse-crosscoders-model-diffing} generalises the SAE from a single site to several at once. A \textbf{crosscoder} reads a set of layers $L$ and reconstructs each. Its code sums encoder contributions across layers,
+\[
+f(x_j)=\operatorname{ReLU}\!\Big(\textstyle\sum_{l\in L} W^{l}_{enc}\,a^{l}(x_j)+b_{enc}\Big),\qquad
+a^{l\prime}(x_j)=W^{l}_{dec}\,f(x_j)+b^{l}_{dec},
+\]
+and is trained with a reconstruction term \emph{summed over layers} plus a sparsity penalty that is the signature object here, the \textbf{$\ell_1$-of-norms}:
+\[
+\mathcal{L}=\sum_{l\in L}\big\lVert a^{l}(x_j)-a^{l\prime}(x_j)\big\rVert^{2}
+\;+\;\sum_i f_i(x_j)\Big(\textstyle\sum_{l\in L}\lVert W^{l}_{dec,i}\rVert\Big).
+\]
+The penalty weights feature $i$ by the \emph{sum} over layers of its per-layer decoder-vector norms $\lVert W^{l}_{dec,i}\rVert$ (each itself an $\ell_2$ norm) --- an $\ell_1$ across layers of $\ell_2$-within-layer. The deliberate contrast is with the "natural" choice, the $\ell_2$-of-norms $\sqrt{\sum_l\lVert W^{l}_{dec,i}\rVert^2}$ (treating all layers' decoder weights as one vector). The $\ell_1$-of-norms is chosen for two reasons: it makes the crosscoder loss \emph{directly comparable} to a sum of per-layer SAE losses (no spurious "bonus" for spreading a feature across layers), and it does not reward spreading, so it surfaces a mix of \textbf{shared and site-specific} features --- whereas $\ell_2$-of-norms recovers only shared ones.
+
+Two applications follow. \textbf{Cross-layer features}: one dictionary resolves cross-layer superposition and tracks a feature persisting through the residual stream, collapsing the per-layer-SAE picture's "duplicate" features (a circuit of three features that per-layer SAEs render as thirteen). Notably the crosscoder defines a feature as "the same" across layers if it \emph{activates on the same data}, allowing the decoder \emph{direction} to drift across layers --- and empirically it does. \textbf{Model diffing}: run one dictionary over the \emph{same} site in \emph{two} models (a base model and its finetune, or two independent models) to read off which features are shared and which are model-specific. This is the bridge to Group 4 (the \emph{Landscape} survey): \emph{transcoders} (predict a later activation, modelling \emph{computation} not representation) and crosscoders are exactly what attribution graphs are built from.
+
+\subsection*{Common mathematical core}
+
+Strip the engineering and all four reduce to one problem: \textbf{overcomplete dictionary learning with an $\ell_1$ relaxation of $\ell_0$ sparsity}. Three pillars hold it up.
+
+\textbf{(i) The $\ell_1$ surrogate for $\ell_0$.} What we want is for $f(x)$ to have few nonzeros --- minimal $\ell_0$ "norm." That is combinatorial and NP-hard, so every paper substitutes the convex $\ell_1$ penalty $\lambda\sum_i f_i\lVert d_i\rVert$, the same surrogate that makes compressed sensing tractable. The substitution is the source of the group's shared pathologies (below) and is the same "reconstruction $+$ sparsity" Lagrangian $\mathbb{E}\lVert x-\hat x\rVert^2+\lambda\rho(f)$ that runs through Groups 2, 4, and 6 (the \emph{Landscape} survey, Part III.4).
+
+\textbf{(ii) Reliance on near-orthogonality, $G\approx I$.} Recovery of a sparse code from a fat dictionary is guaranteed (compressed sensing) only when the dictionary is \textbf{incoherent} --- its columns nearly orthogonal, i.e.\ the \textbf{Gram matrix} $G=D^{*}D$ has small off-diagonal, $G\approx I$. This is the same Johnson--Lindenstrauss / Thomson geometry Group 2 derives on the forward side (the \emph{Landscape} survey, Part I.2, §4). The off-diagonal of $G$ \emph{is} interference; feature splitting is $G$ revealing finer block structure as $F$ grows; the "weight interference" central mode the monosemanticity papers see when comparing two models' features is $G$'s off-diagonal made visible.
+
+\textbf{(iii) Inverse to Group 2's forward problem, via one theorem read twice.} Group 2 uses compressed sensing to \emph{upper-bound} how many features can be packed (a forward statement about the embedding $W$); Group 3 \emph{is} the recovery algorithm that same theorem promises (an inverse statement, recovering $f$ from $x\approx Df$). The SAE encoder is a learned, amortised stand-in for the iterative sparse solver --- one feed-forward pass $\operatorname{ReLU}(W_{e}x+b)$ instead of an optimisation per datapoint. This is the cleanest place in the whole corpus where two camps share a single piece of mathematics (the \emph{Landscape} survey, Part III.5).
+
+\subsection*{How they diverge}
+
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Post-hoc recovery vs.\ architectural change.} The three SAE/crosscoder papers leave the model fixed and learn $D$ afterwards; SoLU rewrites the activation function so the dictionary is forced to be (near) the standard basis at training time. Recovery is non-invasive but yields a dictionary with no privileged status; the architectural route bakes interpretability in but --- the LayerNorm no-free-lunch --- cannot fully suppress what superposition wants.
+\item \textbf{Single-site vs.\ cross-layer vs.\ cross-model.} Towards/Scaling fit one dictionary to one activation site (an MLP, then the mid residual stream). Crosscoders fit \emph{one} dictionary jointly across many layers ($\ell_1$-of-norms) and even across two models (diffing). The penalty geometry is exactly what changes: a per-site $\ell_1$ becomes an $\ell_1$ of per-layer $\ell_2$ norms.
+\item \textbf{Toy vs.\ frontier scale.} Towards Monosemanticity is a $512$-neuron one-layer testbed where logit effects are essentially linear and ground-truth-ish proxies exist; Scaling Monosemanticity is a proprietary frontier model with $34\mathrm{M}$ features, scaling laws, and heavy hedging. Formality drops as scale rises (the \emph{Landscape} survey, Part V).
+\item \textbf{What is modelled.} SAEs/crosscoders here model \emph{representation} (a basis for activation space). The transcoder variant flagged for Group 4 models \emph{computation} (a map between spaces) --- a divergence in what "correct" means, taken up below and in IV.2 of the \emph{Landscape} survey.
+\end{itemize}
+
+\subsection*{What they answer, and what they don't}
+
+\textbf{What they answer.} Superposition is real and dictionaries can be recovered: SAEs extract thousands-to-millions of features that are far more monosemantic than neurons, causally steer behaviour, and recur across models (universality). The recipe scales (towards $\to$ scaling), generalises across layers and models (crosscoders), and even has a tidy quantitative law (the concept-frequency sigmoid). The architectural route shows the choice of nonlinearity \emph{measurably} moves polysemanticity.
+
+\textbf{What they don't.} The honest gaps are mostly mathematical, and the authors say so.
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{No ground-truth feature, no principled objective.} There is no definition of "feature" against which to score $D$; the trained objective is reconstruction $+$ sparsity, an admitted \emph{proxy} for interpretability ("Inability to Evaluate"). \textbf{MSE-vs-$\ell_1$ is unprincipled}: nobody knows the right trade-off $\lambda$, or how to know one was made well.
+\item \textbf{Shrinkage.} The $\ell_1$ penalty biases active $f_i$ downward (it penalises magnitude, not just support), so reconstructions systematically undershoot --- the standard LASSO shrinkage, here a bias in every feature activation. (JumpReLU/threshold encoders are partial fixes.)
+\item \textbf{Dead features and no canonical width.} Up to $65\%$ of a large dictionary can be dead; feature splitting means $F$ is a resolution dial, not a count --- there is no "right number of features."
+\item \textbf{Cross-layer superposition.} Features smeared across layers defeat any single-site SAE; crosscoders mitigate but do not solve it (the authors call it "very fundamental").
+\item \textbf{Gauge-dependence of the loss (the deep one).} The reconstruction loss $\lVert x-\hat x\rVert_2^2$ and every decoder-cosine comparison are \textbf{metric-dependent}: they silently insert the Euclidean $G=I$ as an inner product on $V$ --- yet Groups 2 and 4 insist that same residual stream has \textbf{no privileged basis}, a $GL(V)$ gauge symmetry (the \emph{Landscape} survey, Parts I.4, III.2). Under a gauge $x\mapsto Mx$ the $\ell_2$ loss is \emph{not} invariant, so what the SAE deems a good reconstruction depends on a coordinate choice the architecture never supplied. The empirical escape hatch --- Adam and training \emph{do} break the symmetry (\textcite{privileged-bases-residual-stream}), so the data-induced metric is not arbitrary --- is a crutch, not a principled choice of metric.
+\item \textbf{The framing question, unresolved:} "is the model \emph{made of} features, or are features a post-hoc description?" Universality is suggestive but not decisive.
+\end{itemize}
+
+\subsection*{Connections}
+
+\textbf{To Group 2 (the forward problem).} Group 3 is the literal inverse of Group 2's packing problem: where toy models ask how an overcomplete frame is \emph{stored}, SAEs ask how it is \emph{read back out}. Both pivot on the same Gram matrix $G=D^{*}D$ and the same compressed-sensing theorem, read forward (capacity bound) and backward (recovery). Feature splitting (Group 3) and the polytope/tegum geometries (Group 2) are two views of the same $G$.
+
+\textbf{To Group 4 (attribution).} The transcoder/crosscoder machinery here is the substrate of the circuit-tracing program: \textcite{circuit-tracing-computational-graphs} replaces each MLP with a \emph{cross-layer transcoder} --- a Group-3 sparse model that predicts \emph{computation} --- and reads off a linear attribution graph; \textcite{on-the-biology-of-a-large-language-model} applies it at frontier scale. So Group 3 supplies the nodes that Group 4's edges connect. The shift from \emph{representation} to \emph{computation} is also where mechanistic faithfulness becomes a worry (\textcite{toy-model-of-mechanistic-unfaithfulness}): a transcoder can be sparse, monosemantic, low-error, and still implement the wrong algorithm.
+
+\textbf{To the gauge/metric blind spot.} The pointed open question (the \emph{Landscape} survey, Part VI.1): \textbf{if the $\ell_2$ reconstruction loss is gauge-dependent, what \emph{should} an SAE minimise?} A genuinely basis-free objective would minimise reconstruction error in a \emph{derived} metric, not the default Euclidean one. \textcite{linear-representation-hypothesis-geometry} answers the analogous question for the model's \emph{output} space with the \textbf{causal inner product} $g_C=\operatorname{Cov}(\gamma)^{-1}$ (a whitening/Mahalanobis form); the corresponding metric for the residual-stream \emph{interior} that an SAE acts on is, as far as this corpus shows, unwritten. Recasting interference and feature interaction in metric-free terms --- image-in-kernel / virtual weights rather than the $G=I$ Gram matrix (the \emph{ML~Concepts} primer §1.3) --- is one concrete shape the fix could take.
+
+\subsection*{For the mathematician}
+
+Three threads are worth pulling.
+
+\textbf{Recovery guarantees vs.\ the amortised encoder.} Classical \textbf{compressed sensing} gives clean theorems: a $k$-sparse $f\in\mathbb{R}^{F}$ is exactly recoverable from $x=Df$ by $\ell_1$ minimisation provided $D$ satisfies a restricted-isometry / incoherence condition (coherence $\mu(D)=\max_{i\neq j}|\langle d_i,d_j\rangle|$ small, i.e.\ $G\approx I$), with sample complexity $\dim V\gtrsim k\log(F/k)$. The SAE does \emph{not} run that minimisation: it replaces the per-datapoint convex program by a single \textbf{learned, amortised} affine-then-ReLU encoder $f(x)=\operatorname{ReLU}(W_e x+b)$. The open mathematical questions are sharp. (a)~When does an amortised one-layer encoder \emph{realise} the $\ell_1$ recovery map --- for what $D$ is the optimal sparse code a pointwise ReLU of a linear readout? (b)~The encoder $W_e$ is essentially asking for an approximate left-inverse of the fat $D$; the natural object is the \textbf{pseudoinverse} $D^{+}=(D^{*}D)^{-1}D^{*}$ premised on $G$ invertible --- but in superposition $G$ is singular ($F>d$ forces $\ker D\neq 0$), so what is recovered is governed by the conditioning of $G$ restricted to the active support. (c)~The known $\ell_1$ \textbf{shrinkage} bias has a closed form for LASSO; quantifying the analogous bias of the amortised encoder, and whether a thresholded (JumpReLU) encoder removes it, is concrete.
+
+\textbf{The missing principled objective.} The field optimises $\mathbb{E}\lVert x-\hat x\rVert_2^2+\lambda\rho(f)$ and openly calls it a proxy. A mathematician's instinct is to ask what \emph{invariant} this should be a relaxation of. The $\ell_0$ "true" objective is gauge-invariant (counting nonzeros of $f$ ignores any metric on $V$), but the $\ell_2$ reconstruction term is \emph{not}. So the current objective mixes a gauge-invariant sparsity term with a gauge-\emph{variant} fidelity term --- and the trade-off $\lambda$ between them is doubly ill-posed. Is there an objective whose minimiser is independent of the $GL(V)$ frame? Candidates: measure reconstruction error in a model-derived metric (a residual-stream analogue of $g_C=\operatorname{Cov}(\gamma)^{-1}$), or replace $\lVert x-\hat x\rVert_2^2$ by a divergence on the \emph{downstream behaviour} (KL on the next-token distribution), which is gauge-invariant because it is read through the model's own maps. Either reframes "good dictionary" as a property of the model's function, not of an arbitrary coordinate system.
+
+\textbf{The gauge-invariant reformulation question.} Stated cleanly: the residual stream $V$ carries a $GL(V)$ symmetry; the SAE's loss, its decoder cosine-similarities, and its Gram-matrix diagnostics all live in the metric-dependent column (the \emph{Landscape} survey, Part III.1) and are therefore not canonically meaningful. Two genuinely invariant objects survive and could anchor a reformulation: the natural \textbf{dual pairing} (a feature read by a downstream covector, $\langle w, d_i\rangle$, needs no metric) and the \textbf{virtual weight / image-in-kernel} relation (whether one component's write subspace lands in another's kernel). A worthwhile programme: re-derive "feature," "interference," and "reconstruction quality" using only these, ask whether dictionary recovery can be posed entirely in the quotient/dual language, and so decide whether the gauge-dependence of the $\ell_2$ loss is a harmless convention that training fixes or a genuine obstruction to a canonical notion of "the model's features." This is the leading candidate, in this group, for where the mathematics actually is.
+
+
+\printbibliography
+\end{document}
