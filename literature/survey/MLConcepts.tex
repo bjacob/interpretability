@@ -191,13 +191,14 @@ The path expansion of a \textbf{1-layer attention-only} model (\emph{Landscape} 
 \begin{callout}
 \textbf{Worked example: a skip-trigram head.} Take $n_{\text{vocab}}=4$ with token basis ordered $(\texttt{keep},\texttt{in},\texttt{mind},\texttt{and})$. To strip away everything but the two circuits, identify $V\cong T$ via $W_E = I$ (each token embeds to its own basis vector) and tie the unembedding $W_U = I$ (coordinates). Then $W_UW_E=I$ --- the \emph{direct path} $\operatorname{Id}\otimes W_UW_E$ just copies the current token's one-hot to the logits (the bigram baseline) --- and the two token-to-token circuits are \emph{literally} $W_{QK}$ and $W_{OV}$ read in the token basis. Give the single head these two rank-$1$ circuits (rows/cols ordered as above):
 \[
+\begin{aligned}
 \underbrace{W_E^{\top}W_{QK}W_E}_{\text{QK circuit}}
-=\;4\,(\mathbf e_{\texttt{in}})(\mathbf e_{\texttt{keep}})^{\top}
-=\begin{pmatrix}0&0&0&0\\ 4&0&0&0\\ 0&0&0&0\\ 0&0&0&0\end{pmatrix},
-\qquad
+&=\;4\,(\mathbf e_{\texttt{in}})(\mathbf e_{\texttt{keep}})^{\top}
+=\begin{pmatrix}0&0&0&0\\ 4&0&0&0\\ 0&0&0&0\\ 0&0&0&0\end{pmatrix},\\[4pt]
 \underbrace{W_UW_{OV}W_E}_{\text{OV circuit}}
-=\;5\,(\mathbf e_{\texttt{mind}})(\mathbf e_{\texttt{keep}})^{\top}
+&=\;5\,(\mathbf e_{\texttt{mind}})(\mathbf e_{\texttt{keep}})^{\top}
 =\begin{pmatrix}0&0&0&0\\ 0&0&0&0\\ 5&0&0&0\\ 0&0&0&0\end{pmatrix}.
+\end{aligned}
 \]
 The QK row says \emph{query} \texttt{in} wants \emph{key} \texttt{keep} (entry $4$); the OV column says: when \texttt{keep} is attended to, raise the logit of \texttt{mind} (entry $5$). Both are rank $1$, so $d_{\text{head}}=1$ realises them, e.g. $W_K:\texttt{keep}\mapsto 1$ (else $0$), $W_Q:\texttt{in}\mapsto 4$, and $W_V:\texttt{keep}\mapsto 1$, $W_O:1\mapsto 5\,\mathbf e_{\texttt{mind}}$.
 
