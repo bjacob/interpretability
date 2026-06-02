@@ -165,7 +165,7 @@ That one is a \textbf{bilinear form} and the other an \textbf{endomorphism} is t
 
 \paragraph*{Freezing the attention pattern --- the move that makes circuits tractable}\mbox{}\\
 
-This unpacks the paragraph you asked about. The head map (matrix picture) $X \mapsto W_{OV}\,X\,A(X)^\top$ is nonlinear, but in a very controlled way: \textbf{the only nonlinear dependence on $X$ is through $A = A(X)$.} Hold $A$ fixed at a constant matrix $A_0$ and the residual map \[ X \;\longmapsto\; (W_{OV}\otimes A_0)\,X \qquad(\text{matrix picture: } W_{OV}\, X\, A_0^\top) \] is \textbf{exactly linear} --- it is a single fixed linear operator on $V\otimes P$, the tensor product of two constant linear maps.
+The head map (matrix picture) $X \mapsto W_{OV}\,X\,A(X)^\top$ is nonlinear, but in a very controlled way: \textbf{the only nonlinear dependence on $X$ is through $A = A(X)$.} Hold $A$ fixed at a constant matrix $A_0$ and the residual map \[ X \;\longmapsto\; (W_{OV}\otimes A_0)\,X \qquad(\text{matrix picture: } W_{OV}\, X\, A_0^\top) \] is \textbf{exactly linear} --- it is a single fixed linear operator on $V\otimes P$, the tensor product of two constant linear maps.
 
 
 The conceptual content: the stream $X$ plays \emph{two roles} in a head. It determines the \textbf{routing} (through the QK path $X \mapsto A$) and it supplies the \textbf{content} that gets moved (through the value/OV path). "Freezing $A$" means computing the routing $A_0 = A(X_0)$ on some reference input $X_0$, then \emph{detaching} it --- regarding the head as a function of the content-carrying copy of $X$ alone, with routing held fixed. Under that split the head is the constant linear operator above.
