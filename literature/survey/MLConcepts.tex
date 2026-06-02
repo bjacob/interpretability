@@ -189,7 +189,19 @@ Why this "makes circuit analysis tractable": with every head's $A$ frozen to con
 The path expansion of a \textbf{1-layer attention-only} model (\emph{Landscape} survey, Group~1) conjugates the two circuits above by the embedding and unembedding to get two honest $n_{\text{vocab}}\times n_{\text{vocab}}$ \textbf{token-to-token} matrices: the \textbf{QK circuit} $W_E^{\vee}\,W_{QK}\,W_E$ (coordinates $W_E^{\top}W_{QK}W_E$), scoring how much a query \emph{token} wants to attend to a key \emph{token}, and the \textbf{OV circuit} $W_U\,W_{OV}\,W_E$, recording how an attended token shifts the output logits. Each has rank $\le d_{\text{head}}$ (it factors through $H$). The worked example below instantiates both on numbers small enough to run softmax by hand; it is the concrete companion to the where/what story above.
 
 \begin{callout}
-\textbf{Worked example: a skip-trigram head.} Take $n_{\text{vocab}}=4$ with token basis ordered $(\texttt{keep},\texttt{in},\texttt{mind},\texttt{and})$. To strip away everything but the two circuits, identify $V\cong T$ via $W_E = I$ (each token embeds to its own basis vector) and tie the unembedding $W_U = I$ (coordinates). Then $W_UW_E=I$ --- the \emph{direct path} $\operatorname{Id}\otimes W_UW_E$ just copies the current token's one-hot to the logits (the bigram baseline) --- and the two token-to-token circuits are \emph{literally} $W_{QK}$ and $W_{OV}$ read in the token basis. Give the single head these two rank-$1$ circuits (rows/cols ordered as above):
+\textbf{Worked example: a skip-trigram head.}
+
+\emph{What the model does, and what this head is for.} The whole model is a \textbf{next-token predictor}: feed it a sequence of tokens (a \emph{prefix} of text) and it returns a probability distribution over the single token that comes next. You \emph{read} a piece of text by running the model once over it; you \emph{generate} text by sampling the predicted token, appending it to the prefix, and running again --- one token at a time, left to right. Our toy head is built to handle one scrap of English, the phrase ``\texttt{keep \dots\ in mind}''. Concretely we will hand it the prefix ``\texttt{keep this in}'' and ask it to predict the next token, which should be ``\texttt{mind}'' (the earlier tokens we simply take as given).
+
+\emph{Three tokens, three different roles --- and ``attend'' is not ``predict''.} The step that trips up newcomers is that \textbf{three distinct tokens} are in play, doing three different jobs:
+\begin{itemize}
+\item the \textbf{source}, a.k.a. the \textbf{key} the head lands on: \texttt{keep}, sitting at an \emph{earlier} position --- what the head \emph{looks back at};
+\item the \textbf{destination}, a.k.a. the \textbf{query}: \texttt{in}, the \emph{current} position, the one whose next token we are predicting --- what does the \emph{looking};
+\item the \textbf{output}: \texttt{mind}, the token whose logit the head ultimately \emph{raises} --- the actual prediction.
+\end{itemize}
+So ``query \texttt{in} wants key \texttt{keep}'' means: \emph{when the current token is \texttt{in}, the head reaches backward through the context and pulls information out of the earlier position holding \texttt{keep}.} It does \textbf{not} mean the model outputs \texttt{keep}. Attention only \emph{moves information between positions}; a \emph{separate} map (the OV circuit) then turns the retrieved \texttt{keep} into the prediction \texttt{mind}. Nothing is reversed in text order: \texttt{keep} occurs first, \texttt{in} later, and \texttt{mind} is what comes after \texttt{in} --- ``\texttt{keep this in mind}''. (Your worry --- ``does this generate \texttt{keep} after \texttt{in}?'' --- conflates the \emph{key} the head reads with the \emph{output} it writes; they are different tokens.)
+
+\emph{The setup.} Take $n_{\text{vocab}}=4$ with token basis ordered $(\texttt{keep},\texttt{in},\texttt{mind},\texttt{this})$. To strip away everything but the two circuits, identify $V\cong T$ via $W_E = I$ (each token embeds to its own basis vector) and tie the unembedding $W_U = I$ (coordinates). Then $W_UW_E=I$ --- the \emph{direct path} $\operatorname{Id}\otimes W_UW_E$ just copies the current token's one-hot to the logits (the bigram baseline) --- and the two token-to-token circuits are \emph{literally} $W_{QK}$ and $W_{OV}$ read in the token basis. Give the single head these two rank-$1$ circuits (rows/cols ordered as above):
 \[
 \begin{aligned}
 \underbrace{W_E^{\top}W_{QK}W_E}_{\text{QK circuit}}
@@ -200,13 +212,13 @@ The path expansion of a \textbf{1-layer attention-only} model (\emph{Landscape} 
 =\begin{pmatrix}0&0&0&0\\ 0&0&0&0\\ 5&0&0&0\\ 0&0&0&0\end{pmatrix}.
 \end{aligned}
 \]
-The QK row says \emph{query} \texttt{in} wants \emph{key} \texttt{keep} (entry $4$); the OV column says: when \texttt{keep} is attended to, raise the logit of \texttt{mind} (entry $5$). Both are rank $1$, so $d_{\text{head}}=1$ realises them, e.g. $W_K:\texttt{keep}\mapsto 1$ (else $0$), $W_Q:\texttt{in}\mapsto 4$, and $W_V:\texttt{keep}\mapsto 1$, $W_O:1\mapsto 5\,\mathbf e_{\texttt{mind}}$.
+Read in those three roles: the QK row for \emph{query} \texttt{in} has its one nonzero entry in the \emph{key} column \texttt{keep} (value $4$) --- the ``\emph{when current token is \texttt{in}, look back at \texttt{keep}}'' instruction; the OV column for \emph{source} \texttt{keep} has its one nonzero entry in the \emph{output} row \texttt{mind} (value $5$) --- the ``\emph{having found \texttt{keep}, push up the prediction \texttt{mind}}'' instruction. Both are rank $1$, so $d_{\text{head}}=1$ realises them, e.g. $W_K:\texttt{keep}\mapsto 1$ (else $0$), $W_Q:\texttt{in}\mapsto 4$, and $W_V:\texttt{keep}\mapsto 1$, $W_O:1\mapsto 5\,\mathbf e_{\texttt{mind}}$.
 
-\emph{Run it on the sequence} $\texttt{keep},\ \texttt{and},\ \texttt{in}$ (positions $1,2,3$), asking for the token after position $3$. The destination is position $3$, query token \texttt{in}; the causal mask allows keys at positions $1,2,3$, with key tokens $\texttt{keep},\texttt{and},\texttt{in}$.
+\emph{Run it on the prefix} $\texttt{keep},\ \texttt{this},\ \texttt{in}$ (positions $1,2,3$), asking for the token after position $3$. The destination is position $3$, query token \texttt{in}; the causal mask allows keys at positions $1,2,3$, with key tokens $\texttt{keep},\texttt{this},\texttt{in}$.
 
 \textbf{Step 1 --- scores.} Read row \texttt{in} of the QK circuit against each key token:
 \[
-s_1=\langle\texttt{in}\mid\texttt{keep}\rangle=4,\qquad s_2=\langle\texttt{in}\mid\texttt{and}\rangle=0,\qquad s_3=\langle\texttt{in}\mid\texttt{in}\rangle=0.
+s_1=\langle\texttt{in}\mid\texttt{keep}\rangle=4,\qquad s_2=\langle\texttt{in}\mid\texttt{this}\rangle=0,\qquad s_3=\langle\texttt{in}\mid\texttt{in}\rangle=0.
 \]
 \textbf{Step 2 --- pattern (the one nonlinearity).} Row-softmax over positions $1,2,3$ (folding $1/\sqrt{d_{\text{head}}}$ into the $4$):
 \[
@@ -214,11 +226,11 @@ A_{3,\cdot}=\operatorname{softmax}(4,0,0)=\frac{(e^4,\,1,\,1)}{e^4+2}\approx(0.9
 \]
 The destination puts $\approx\!96.5\%$ of its attention on position $1$ --- it has \textbf{attended to} \texttt{keep}.
 
-\textbf{Step 3 --- output (OV moves the content).} The head adds $\sum_j A_{3,j}\,W_{OV}\,\mathbf e_{(\text{token }j)}$. In the token basis $W_{OV}\mathbf e_{\texttt{keep}}=5\,\mathbf e_{\texttt{mind}}$ and $W_{OV}\mathbf e_{\texttt{and}}=W_{OV}\mathbf e_{\texttt{in}}=0$, so the head's contribution to the position-$3$ logits is
+\textbf{Step 3 --- output (OV moves the content).} The head adds $\sum_j A_{3,j}\,W_{OV}\,\mathbf e_{(\text{token }j)}$. In the token basis $W_{OV}\mathbf e_{\texttt{keep}}=5\,\mathbf e_{\texttt{mind}}$ and $W_{OV}\mathbf e_{\texttt{this}}=W_{OV}\mathbf e_{\texttt{in}}=0$, so the head's contribution to the position-$3$ logits is
 \[
 0.965\cdot 5\,\mathbf e_{\texttt{mind}}\;+\;0.018\cdot 0\;+\;0.018\cdot 0\;\approx\;4.82\,\mathbf e_{\texttt{mind}}.
 \]
-Adding the direct path ($+1$ to \texttt{in}), the logit vector is $\approx(\texttt{keep}:0,\ \texttt{in}:1,\ \texttt{mind}:4.82,\ \texttt{and}:0)$, so the model predicts \textbf{\texttt{mind}}. We have read the \textbf{skip-trigram} $[\texttt{keep}]\dots[\texttt{in}]\!\to\![\texttt{mind}]$ straight off the two matrices: a nonzero QK entry (\emph{where}: \texttt{in} attends to \texttt{keep}) composed with a nonzero OV entry (\emph{what}: \texttt{keep} boosts \texttt{mind}).
+Adding the direct path ($+1$ to \texttt{in}), the logit vector is $\approx(\texttt{keep}:0,\ \texttt{in}:1,\ \texttt{mind}:4.82,\ \texttt{this}:0)$, so the model predicts \textbf{\texttt{mind}} --- completing ``\texttt{keep this in mind}''. We have read the \textbf{skip-trigram} $[\texttt{keep}]\dots[\texttt{in}]\!\to\![\texttt{mind}]$ straight off the two matrices: a nonzero QK entry (\emph{where}: \texttt{in} attends back to \texttt{keep}) composed with a nonzero OV entry (\emph{what}: an attended \texttt{keep} boosts \texttt{mind}).
 
 \emph{Why the factoring is lossy (the "skip-trigram bug").} Suppose the same head must also do $[\texttt{keep}]\dots[\texttt{at}]\!\to\![\texttt{bay}]$. That means QK row \texttt{at} also points at \texttt{keep}, and OV column \texttt{keep} also boosts \texttt{bay}. But the head's effect on a $(\text{destination},\text{out})$ pair factors as $\big(\text{attention to source}\big)\times\big(\text{OV}[\text{out},\text{source}]\big)$ --- the destination enters only through QK, the output only through OV, coupled solely by the \emph{shared} source token. With \texttt{keep} as source attracting both destinations \emph{and} boosting both outputs, all four combinations fire, including the unwanted $[\texttt{keep}]\dots[\texttt{in}]\!\to\![\texttt{bay}]$. No choice of weights separates them: that is the documented bug, and it is visible here as ``column \texttt{keep} of the OV circuit is one vector, shared by every destination that attends to \texttt{keep}.''
 \end{callout}
